@@ -1,6 +1,6 @@
 // Accounts and sync with Supabase. Without config.js values the app stays local-only.
-import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=9';
-import { state, hooks, save, saveProfile, route, routeName, refreshIfIdle, fr, toast, displayName, avatarURL, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=9';
+import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=10';
+import { state, hooks, save, saveProfile, store, route, routeName, refreshIfIdle, fr, toast, displayName, avatarURL, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=10';
 
 export function setSync(s, msg = '') {
   state.sync = s;
@@ -35,11 +35,14 @@ export async function initSync() {
     if (state.user?.id === before) { hooks.header(); return; } // e.g. pseudo or photo changed
     // Supabase advises against awaiting its own calls inside this callback.
     setTimeout(async () => {
+      if (state.user) forgetOtherAccount(state.user.id);
       await adoptProfile();
       await refreshAdmin();
       if (state.user) { await pullAll(); refreshShares(); } // shares get the current pseudo and photo
       else setSync('signedout');
-      if (['', 'account', 'admin', 'settings', 's', 'explore', 'ai'].includes(routeName())) route();
+      // Back to the page that asked for an account, if any.
+      if (state.user && state.returnTo) { const h = state.returnTo; state.returnTo = null; location.hash = h; }
+      else route();
     }, 0);
   });
   loadSettings();
@@ -53,6 +56,18 @@ export async function loadSettings() {
   const bar = document.getElementById('announce');
   bar.textContent = state.settings.announcement;
   bar.hidden = !state.settings.announcement.trim();
+}
+
+// Sets kept on this device belong to the last account signed in here: never merge them into another one.
+function forgetOtherAccount(id) {
+  const owner = store.get('recto.owner');
+  if (owner && owner !== id) {
+    for (const k of Object.keys(state.decks)) delete state.decks[k];
+    save();
+    state.profile = cleanProfile(null);
+    saveProfile();
+  }
+  store.set('recto.owner', id);
 }
 
 // First sign-in with this version: copy the current name and photo (ours, or Google's) into pseudo/photo.

@@ -1,9 +1,62 @@
-import { streak, dayKey, uid } from './logic.js?v=9';
-import { state, views, mount, app, esc, plural, icon, live, playable, dueIn, newIn, mastery, tint, meter, touch, displayName } from './core.js?v=9';
+import { streak, dayKey, uid } from './logic.js?v=10';
+import { state, views, mount, app, esc, plural, icon, live, playable, dueIn, newIn, mastery, tint, meter, touch, displayName, SUPABASE_URL } from './core.js?v=10';
 
 let folder = null; // selected folder chip; '' = sets without a folder
 
+views.loading = () => mount('<p class="muted loading">Chargement…</p>');
+
+// Shown instead of a study or creation page to visitors without an account.
+views.gate = function gateView() {
+  mount(`<section class="panel gate">
+      <span class="mode-ic">${icon('user')}</span>
+      <h1>Crée ton compte pour réviser</h1>
+      <p class="muted">C’est gratuit. Tes sets, ta progression et ta série sont enregistrés et synchronisés sur tous tes appareils.</p>
+      <div class="actions"><button class="btn primary lg" data-action="up">Créer un compte</button><button class="btn lg" data-action="in">Se connecter</button></div>
+      <p class="muted small">Tu peux aussi parcourir les <a href="#explore">sets partagés dans Explorer</a> sans compte.</p>
+    </section>`, {
+    click: {
+      up: () => { state.authMode = 'up'; location.hash = 'account'; },
+      in: () => { state.authMode = 'in'; location.hash = 'account'; },
+    },
+  });
+};
+
+// Landing page for visitors.
+function landing() {
+  const feature = (ic, title, text) => `<div class="mode"><span class="mode-ic">${icon(ic)}</span><span class="mode-text"><strong>${title}</strong><span>${text}</span></span></div>`;
+  mount(`
+    <section class="hero">
+      <div class="hero-text">
+        <p class="eyebrow">Cartes de révision gratuites</p>
+        <h1>Retiens tes cours pour de bon</h1>
+        <p class="lead">Crée tes fiches en quelques secondes, révise-les avec quatre modes d’étude, et laisse Recto te les représenter juste avant que tu les oublies.</p>
+        <div class="actions">
+          <button class="btn primary lg" data-action="up">Créer un compte gratuit</button>
+          <button class="btn lg" data-action="in">Se connecter</button>
+        </div>
+      </div>
+      <div class="stack" aria-hidden="true">
+        <span class="sheet s3"></span><span class="sheet s2"></span>
+        <span class="sheet s1"><span class="sheet-label">Terme</span><span class="sheet-text">Révision espacée</span></span>
+      </div>
+    </section>
+    <nav class="modes" aria-label="Ce que propose Recto">
+      ${feature('review', 'Révision espacée', 'Chaque carte revient au bon moment, calculé par l’algorithme FSRS.')}
+      ${feature('learn', 'Apprendre, Test, Association', 'QCM, réponses écrites, examens notés, jeu chronométré, dictée.')}
+      ${feature('sparkle', 'Cartes générées par l’IA', 'À partir d’un cours collé, d’un PDF ou d’une photo de tes notes.')}
+      ${feature('cards', 'Sur tous tes appareils', 'Tes sets, ta série et tes statistiques se synchronisent.')}
+    </nav>
+    <section class="invite"><div><strong>Envie de voir avant de t’inscrire ?</strong><p class="muted small">Parcours les sets partagés par la communauté, sans compte.</p></div><div class="actions"><a class="btn" href="#explore">${icon('globe')}Explorer</a></div></section>`, {
+    wide: true,
+    click: {
+      up: () => { state.authMode = 'up'; location.hash = 'account'; },
+      in: () => { state.authMode = 'in'; location.hash = 'account'; },
+    },
+  });
+}
+
 views.home = function homeView() {
+  if (SUPABASE_URL && !state.user) return state.sync === 'loading' ? views.loading() : landing();
   const ds = live(), now = Date.now();
   const due = ds.reduce((n, d) => n + dueIn(d, now), 0);
   const fresh = ds.reduce((n, d) => n + newIn(d), 0);

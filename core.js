@@ -1,7 +1,7 @@
 // Shared state, helpers and view plumbing. Every module imports this file with the same URL.
-import { cleanDeck, cleanProfile, dayKey, uid, review, DAY } from './logic.js?v=9';
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=9';
-import { icon } from './icons.js?v=9';
+import { cleanDeck, cleanProfile, dayKey, uid, review, DAY } from './logic.js?v=10';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=10';
+import { icon } from './icons.js?v=10';
 export { SUPABASE_URL, SUPABASE_KEY, icon };
 
 export const app = document.getElementById('app');
@@ -237,10 +237,17 @@ document.addEventListener('keydown', e => {
 
 const DECK_VIEWS = new Set(['deck', 'edit', 'print', 'cards', 'learn', 'test', 'match', 'write']);
 export const routeName = () => location.hash.slice(1).split('/')[0];
+// Creating and studying need an account; visitors get the landing page, Explorer and shared sets.
+const NEEDS_ACCOUNT = new Set([...DECK_VIEWS, 'review', 'ai', 'stats', 'trash']);
 export function route() {
   const [name = '', id, opt] = location.hash.slice(1).split('/');
   const d = id && state.decks[id] && !state.decks[id].deleted ? state.decks[id] : null;
   hooks.header();
+  if (SUPABASE_URL && !state.user && NEEDS_ACCOUNT.has(name)) {
+    if (state.sync === 'loading') return views.loading();
+    state.returnTo = location.hash;
+    return views.gate();
+  }
   if (DECK_VIEWS.has(name)) return d ? views[name](d, opt === 'fav') : views.home();
   if (name === 'review') return views.review(d, opt === 'fav');
   if (name === 'ai') return views.ai(d);

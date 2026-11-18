@@ -670,3 +670,8 @@ img.avatar { object-fit: cover; background: var(--line); padding: 0; }
 .google-btn:hover:not(:disabled) { border-color: var(--muted); }
 .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.85rem; margin: 4px 0; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* ---------- v10: visitors */
+.gate { max-width: 560px; margin: 24px auto 0; align-items: flex-start; }
+.gate .mode-ic { margin-bottom: 4px; }
+.loading { padding: 40px 0; text-align: center; }
