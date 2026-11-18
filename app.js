@@ -781,8 +781,8 @@ function accountView() {
 
   const closed = !settings.signups_open;
   const tabs = authMode === 'in' || authMode === 'up' ? `<div class="tabs" role="tablist">
-      <button role="tab" aria-selected="${authMode === 'in'}" data-action="mode" data-mode="in">Se connecter</button>
-      <button role="tab" aria-selected="${authMode === 'up'}" data-action="mode" data-mode="up">Créer un compte</button>
+      <button type="button" role="tab" aria-selected="${authMode === 'in'}" data-action="mode" data-mode="in">Se connecter</button>
+      <button type="button" role="tab" aria-selected="${authMode === 'up'}" data-action="mode" data-mode="up">Créer un compte</button>
     </div>` : '';
   const forms = {
     in: `<h1>Bon retour</h1><p class="muted">Connecte-toi avec ton compte Recto. Première visite ? Choisis « Créer un compte » juste au-dessus.</p>
