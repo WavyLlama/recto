@@ -11,7 +11,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=Inter:wght@400;500;600&display=swap">
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
+  <script>try { const t = localStorage.getItem('recto.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}</script>
 </head>
 <body>
   <header class="topbar">
@@ -20,17 +21,21 @@
       <nav class="nav" aria-label="Navigation principale">
         <a href="#" data-nav="home">Mes sets</a>
         <a href="#review" data-nav="review">Réviser</a>
-        <a href="#admin" data-nav="admin" hidden>Admin</a>
+        <a href="#explore" data-nav="explore">Explorer</a>
+        <a href="#stats" data-nav="stats">Statistiques</a>
       </nav>
-      <a class="sync" id="sync" href="#account">Sur cet appareil</a>
+      <div class="account" id="account-area"></div>
     </div>
   </header>
   <div id="announce" class="announce" role="status" hidden></div>
   <main id="app">
     <noscript><p>Recto a besoin de JavaScript pour fonctionner.</p></noscript>
   </main>
-  <footer class="foot"><p>Recto · tes fiches de révision, sur tous tes appareils.</p></footer>
+  <footer class="foot">
+    <p>Recto · tes fiches de révision, sur tous tes appareils.</p>
+    <nav class="foot-links" aria-label="Liens utiles"><a href="#explore">Explorer</a><a href="#settings">Paramètres</a><a href="#trash">Corbeille</a></nav>
+  </footer>
   <div id="toast" role="status" aria-live="polite" hidden></div>
-  <script type="module" src="app.js?v=4"></script>
+  <script type="module" src="main.js?v=5"></script>
 </body>
 </html>
