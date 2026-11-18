@@ -244,6 +244,21 @@ export function mergeDeck(a, b) {
   return cleanDeck(out);
 }
 
+// Copies a merged deck into the existing deck and card objects, so screens holding references keep working.
+function replaceContent(target, source) {
+  for (const k of Object.keys(target)) delete target[k];
+  return Object.assign(target, source);
+}
+export function adopt(old, fresh) {
+  if (old === fresh) return old;
+  const byId = new Map(old.cards.map(c => [c.id, c]));
+  const cards = fresh.cards.map(c => {
+    const o = byId.get(c.id);
+    return o && o !== c ? replaceContent(o, { ...c }) : c;
+  });
+  return replaceContent(old, { ...fresh, cards });
+}
+
 // Decks never edited (updatedAt 0, e.g. the example) are not pushed.
 export function merge(local, rows) {
   const merged = { ...local }, toPush = [], seen = new Set();

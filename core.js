@@ -1,5 +1,5 @@
 // Shared state, helpers and view plumbing. Every module imports this file with the same URL.
-import { cleanDeck, cleanProfile, dayKey, uid, DAY } from './logic.js?v=5';
+import { cleanDeck, cleanProfile, dayKey, uid, review, DAY } from './logic.js?v=5';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=5';
 import { icon } from './icons.js?v=5';
 export { SUPABASE_URL, SUPABASE_KEY, icon };
@@ -72,6 +72,15 @@ export function removeCards(d, ids) {
   for (const id of ids) d.gone[id] = now;
   d.cards = d.cards.filter(c => !ids.includes(c.id));
   touch(d);
+}
+
+// Answers given in Apprendre, Test and Écriture also move a card's progress:
+// a right answer counts as a review only when the card is new or due, a wrong one always does.
+export function recordAnswer(d, c, ok, grade = 2) {
+  const now = Date.now();
+  if (ok && c.srs && c.srs.due > now) return;
+  c.srs = review(c.srs, ok ? grade : 0, now);
+  touchCard(d, c);
 }
 
 export const live = () => Object.values(state.decks).filter(d => !d.deleted).sort((a, b) => a.title.localeCompare(b.title, 'fr'));
@@ -175,6 +184,16 @@ export async function renderMath(el) {
 
 // Text and optional image of one side of a card.
 export const faceHTML = (text, img) => `${img ? `<img class="face-img" src="${esc(img)}" alt="" loading="lazy">` : ''}<span class="face-text">${esc(text)}</span>`;
+
+// ---------- profile (pseudo and photo live in the account's user_metadata)
+export const displayName = u => String(u?.user_metadata?.name || '').trim();
+const hue = s => [...(s || '')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 210);
+export function avatarHTML(u, cls = '') {
+  const url = u?.user_metadata?.avatar_url;
+  if (typeof url === 'string' && /^https:\/\//.test(url)) return `<img class="avatar ${cls}" src="${esc(url)}" alt="">`;
+  const label = displayName(u) || u?.email || '?';
+  return `<span class="avatar ${cls}" style="--h:${hue(u?.email)}" aria-hidden="true">${esc(label.trim()[0].toUpperCase())}</span>`;
+}
 
 // ---------- theme
 export function applyTheme(t) {

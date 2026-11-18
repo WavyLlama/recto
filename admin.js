@@ -96,7 +96,7 @@ views.admin = function adminView() {
       body.innerHTML = `
         <div class="row-head"><h2>Comptes <span class="pill">${users.length}</span></h2><button class="btn" data-action="reload">${icon('review')}Actualiser</button></div>
         <div class="table-wrap"><table>
-          <thead><tr><th>E-mail</th><th>Inscription</th><th>Dernière connexion</th><th class="num">Sets</th><th class="num">Cartes</th><th class="num">IA auj.</th><th><span class="sr">Actions</span></th></tr></thead>
+          <thead><tr><th>Compte</th><th>Inscription</th><th>Dernière connexion</th><th class="num">Sets</th><th class="num">Cartes</th><th class="num">IA auj.</th><th><span class="sr">Actions</span></th></tr></thead>
           <tbody>${users.map(x => {
             const me = x.id === user.id;
             let actions;
@@ -106,7 +106,7 @@ views.admin = function adminView() {
             else actions = `${x.is_admin ? `<button class="btn" data-action="demote" data-id="${x.id}">Retirer admin</button>` : `<button class="btn" data-action="promote" data-id="${x.id}">Rendre admin</button>`}
               <button class="btn" data-action="pw" data-id="${x.id}">Mot de passe</button>
               <button class="btn ghost" data-action="del" data-id="${x.id}" aria-label="Supprimer ${esc(x.email)}">${icon('trash')}</button>`;
-            return `<tr><td><span class="u-mail">${esc(x.email)}</span>${x.is_admin ? ' <span class="badge-inline">Admin</span>' : ''}</td>
+            return `<tr><td><span class="u-name">${x.avatar_url ? `<img class="avatar sm" src="${esc(x.avatar_url)}" alt="">` : ''}<span><span class="u-mail">${esc(x.name || x.email)}</span>${x.is_admin ? ' <span class="badge-inline">Admin</span>' : ''}${x.name ? `<span class="muted small u-sub">${esc(x.email)}</span>` : ''}</span></span></td>
               <td>${fmtDate(x.created_at)}</td><td>${fmtDate(x.last_sign_in_at)}</td>
               <td class="num">${x.decks}</td><td class="num">${x.cards}</td><td class="num">${x.ai_today}</td><td><div class="row-actions">${actions}</div></td></tr>`;
           }).join('')}</tbody>

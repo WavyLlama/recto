@@ -1,5 +1,5 @@
 // Recto AI: card generation, explanations, QCM distractors.
-// Secrets: GEMINI_API_KEY (required), GEMINI_MODEL (optional, default gemini-2.5-flash).
+// Secrets: GEMINI_API_KEY (required), GEMINI_MODEL (optional, tried first).
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0';
 
 const cors = {
@@ -10,14 +10,21 @@ const cors = {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 const clip = (s: unknown, n: number) => String(s ?? '').slice(0, n);
 
+// Google retires model names regularly: try the configured one, then the "latest Flash" alias, then a pinned fallback.
+const MODELS = [Deno.env.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-3.8-flash'].filter(Boolean) as string[];
+
 async function gemini(parts: unknown[], key: string) {
-  const model = Deno.env.get('GEMINI_MODEL') || 'gemini-2.5-flash';
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.4 } }),
-  });
-  if (!r.ok) throw new Error(`Gemini ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  let r: Response | null = null;
+  for (const model of MODELS) {
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.4 } }),
+    });
+    if (r.status !== 404) break;
+    console.error(`Gemini model ${model} unavailable, trying the next one`);
+  }
+  if (!r || !r.ok) throw new Error(`Gemini ${r?.status}: ${(await r?.text())?.slice(0, 300)}`);
   const data = await r.json();
   const text = (data.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('') || '{}';
   return JSON.parse(text);

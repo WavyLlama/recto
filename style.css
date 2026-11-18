@@ -651,3 +651,14 @@ li.drop-after { box-shadow: 0 3px 0 var(--accent); }
   main { padding: 0; max-width: none; }
   .print-table tr { break-inside: avoid; }
 }
+
+/* ---------- v5.1: profile */
+img.avatar { object-fit: cover; background: var(--line); padding: 0; }
+.avatar.xl { width: 88px; height: 88px; font-size: 2.2rem; }
+.avatar.sm { width: 28px; height: 28px; font-size: 0.8rem; }
+.menu-email { font-size: 0.78rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-panel { max-width: none; }
+.profile-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.u-name { display: flex; align-items: center; gap: 10px; }
+.u-name > span { display: flex; flex-direction: column; }
+.u-sub { font-weight: 400; }

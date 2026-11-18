@@ -1,5 +1,5 @@
 // Accounts and sync with Supabase. Without config.js values the app stays local-only.
-import { merge, cleanProfile, mergeProfile } from './logic.js?v=5';
+import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=5';
 import { state, hooks, save, saveProfile, route, routeName, refreshIfIdle, fr, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=5';
 
 export function setSync(s, msg = '') {
@@ -24,7 +24,7 @@ export async function initSync() {
     const before = state.user?.id;
     state.user = session?.user || null;
     if (event === 'PASSWORD_RECOVERY') { state.authMode = 'recover'; location.hash = 'account'; }
-    if (state.user?.id === before) return;
+    if (state.user?.id === before) { hooks.header(); return; } // e.g. pseudo or photo changed
     // Supabase advises against awaiting its own calls inside this callback.
     setTimeout(async () => {
       await refreshAdmin();
@@ -63,7 +63,9 @@ export async function pullAll() {
   if (decks.error) return setSync('error', fr(decks.error.message));
   const { merged, toPush } = merge(state.decks, decks.data);
   let changed = JSON.stringify(merged) !== JSON.stringify(state.decks);
-  state.decks = merged;
+  // Update the deck and card objects in place: an open screen (a review in progress, the editor)
+  // keeps references to them, and replacing them would send its next answers to a dead copy.
+  for (const [id, fresh] of Object.entries(merged)) state.decks[id] = state.decks[id] ? adopt(state.decks[id], fresh) : fresh;
   save();
   for (const id of toPush) if (!(await push(id))) return;
   if (!prof.error) {

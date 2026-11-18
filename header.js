@@ -1,5 +1,5 @@
 // Top bar: navigation, account menu, keyboard shortcuts dialog.
-import { state, hooks, esc, icon, route, routeName, trashed, getTheme, setTheme, SUPABASE_URL, toast } from './core.js?v=5';
+import { state, hooks, esc, icon, route, routeName, trashed, getTheme, setTheme, SUPABASE_URL, toast, avatarHTML, displayName } from './core.js?v=5';
 import { flushPushes } from './sync.js?v=5';
 
 const area = document.getElementById('account-area');
@@ -7,8 +7,6 @@ const SYNC = { off: 'Enregistré sur cet appareil', loading: 'Connexion…', sig
 const THEMES = [['system', 'Système'], ['light', 'Clair'], ['dark', 'Sombre']];
 let open = false;
 
-const initial = email => (email || '?').trim()[0].toUpperCase();
-const hue = email => [...(email || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 210);
 
 function render() {
   const name = routeName();
@@ -28,17 +26,17 @@ function render() {
   const t = trashed().length, theme = getTheme();
   area.innerHTML = `
     <button class="avatar-btn" id="avatar" aria-haspopup="menu" aria-expanded="${open}" aria-controls="account-menu" aria-label="Mon compte, ${esc(SYNC[state.sync] || '')}">
-      <span class="avatar" style="--h:${hue(user.email)}">${esc(initial(user.email))}</span>
+      ${avatarHTML(user)}
       <span class="status-dot" data-state="${state.sync}"></span>
       ${icon('chevdown', 'chev-down')}
     </button>
     <div class="menu" id="account-menu" role="menu" ${open ? '' : 'hidden'}>
       <div class="menu-head">
-        <span class="avatar lg" style="--h:${hue(user.email)}">${esc(initial(user.email))}</span>
-        <div><strong class="menu-mail">${esc(user.email)}</strong>
+        ${avatarHTML(user, 'lg')}
+        <div><strong class="menu-mail">${esc(displayName(user) || user.email)}</strong>${displayName(user) ? `<span class="menu-email">${esc(user.email)}</span>` : ''}
         <span class="menu-sync" data-state="${state.sync}">${esc(state.sync === 'error' ? state.syncMsg || SYNC.error : SYNC[state.sync])}</span></div>
       </div>
-      <a role="menuitem" href="#account">${icon('user')}Mon compte</a>
+      <a role="menuitem" href="#account">${icon('user')}Mon profil</a>
       <a role="menuitem" href="#stats">${icon('chart')}Statistiques</a>
       <a role="menuitem" href="#trash">${icon('trash')}Corbeille${t ? ` <span class="pill">${t}</span>` : ''}</a>
       <a role="menuitem" href="#settings">${icon('settings')}Paramètres</a>

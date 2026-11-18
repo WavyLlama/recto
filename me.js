@@ -2,7 +2,7 @@
 import { streak, dayKey, cleanDeck, DAY } from './logic.js?v=5';
 import {
   state, views, mount, app, esc, plural, icon, toast, fr, fmtDate, live, playable, tint, backHome, save, saveProfile, hooks,
-  download, getTheme, setTheme, SUPABASE_URL, MASTERED_DAYS,
+  download, getTheme, setTheme, SUPABASE_URL, MASTERED_DAYS, avatarHTML, displayName,
 } from './core.js?v=5';
 import { flushPushes, pullAll } from './sync.js?v=5';
 
@@ -81,13 +81,46 @@ async function auth() {
   views.account();
 }
 
+// Square, centred crop for the account photo.
+async function squareImage(file, size = 256) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const side = Math.min(bmp.width, bmp.height);
+  const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size });
+  canvas.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.88));
+}
+function removeStored(url) {
+  const path = url && String(url).split('/object/public/images/')[1];
+  if (path) state.sb.storage.from('images').remove([decodeURIComponent(path)]);
+}
+
 function profileView() {
-  const { user } = state;
-  let ask = false;
+  let ask = false, busy = false;
   const draw = () => {
-    const local = live().length;
+    const user = state.user;
+    if (!user) return views.account();
+    const local = live().length, name = displayName(user);
     mount(`${backHome}
-      <header class="page-head"><p class="eyebrow">Mon compte</p><h1>${esc(user.email)}</h1><p class="muted">Inscrit le ${fmtDate(user.created_at)}${state.isAdmin ? ' · <span class="badge-inline">Administrateur</span>' : ''}</p></header>
+      <header class="page-head">
+        <div><p class="eyebrow">Mon profil</p><h1>${esc(name || user.email)}</h1><p class="muted">${name ? `${esc(user.email)} · ` : ''}Inscrit le ${fmtDate(user.created_at)}${state.isAdmin ? ' · <span class="badge-inline">Administrateur</span>' : ''}</p></div>
+      </header>
+      <section class="panel profile-panel">
+        <h2>Profil</h2>
+        <div class="profile-row">
+          ${avatarHTML(user, 'xl')}
+          <div class="actions">
+            <label class="btn" for="avatar-file">${icon('image')}${user.user_metadata?.avatar_url ? 'Changer la photo' : 'Ajouter une photo'}</label>
+            <input type="file" id="avatar-file" accept="image/*" hidden>
+            ${user.user_metadata?.avatar_url ? '<button class="btn ghost" type="button" data-action="noavatar">Retirer la photo</button>' : ''}
+          </div>
+        </div>
+        <form id="name-form" class="inline" novalidate>
+          <label class="sr" for="name">Pseudo ou prénom</label>
+          <input id="name" name="name" maxlength="40" placeholder="Pseudo ou prénom" value="${esc(name)}" autocomplete="nickname">
+          <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>Enregistrer</button>
+        </form>
+        <p class="muted small">Ton pseudo et ta photo apparaissent en haut du site et dans l’espace admin, à la place de ton e-mail.</p>
+      </section>
       <div class="grid-2">
         <section class="panel">
           <h2>Synchronisation</h2>
@@ -112,6 +145,16 @@ function profileView() {
       wide: true,
       click: {
         sync: pullAll,
+        noavatar: async () => {
+          const old = state.user.user_metadata?.avatar_url;
+          const res = await state.sb.auth.updateUser({ data: { avatar_url: null } });
+          if (res.error) return toast(fr(res.error.message));
+          state.user = res.data.user;
+          removeStored(old);
+          hooks.header();
+          draw();
+          toast('Photo retirée.');
+        },
         ask: () => { ask = true; draw(); },
         keep: () => { ask = false; draw(); },
         del: async () => {
@@ -122,7 +165,39 @@ function profileView() {
           toast('Compte supprimé.');
         },
       },
-      submit: async () => {
+      change: async e => {
+        if (e.target.id !== 'avatar-file' || !e.target.files[0]) return;
+        const file = e.target.files[0];
+        toast('Envoi de la photo…');
+        try {
+          const blob = await squareImage(file);
+          const path = `${state.user.id}/avatar-${Date.now()}.jpg`;
+          const { error } = await state.sb.storage.from('images').upload(path, blob, { contentType: 'image/jpeg' });
+          if (error) throw error;
+          const old = state.user.user_metadata?.avatar_url;
+          const url = state.sb.storage.from('images').getPublicUrl(path).data.publicUrl;
+          const res = await state.sb.auth.updateUser({ data: { avatar_url: url } });
+          if (res.error) throw res.error;
+          state.user = res.data.user;
+          removeStored(old);
+          hooks.header();
+          draw();
+          toast('Photo de profil mise à jour.');
+        } catch (err) {
+          toast(`Photo non envoyée : ${fr(err.message || 'format non reconnu')}`);
+        }
+      },
+      submit: async e => {
+        if (e.target.id === 'name-form') {
+          const value = app.querySelector('#name').value.trim().slice(0, 40);
+          const res = await state.sb.auth.updateUser({ data: { name: value } });
+          if (res.error) return toast(fr(res.error.message));
+          state.user = res.data.user;
+          hooks.header();
+          draw();
+          toast(value ? `Enchanté, ${value} !` : 'Pseudo retiré.');
+          return;
+        }
         const form = app.querySelector('#pw'), err = form.querySelector('#err');
         if (!form.reportValidity()) return;
         const f = form.elements;

@@ -59,7 +59,7 @@ views.deck = function deckView(d) {
       ${mode('match', 'Association', d.bestMatch ? `Ton record : ${d.bestMatch.toFixed(1)} s` : 'Relier les paires contre la montre', n >= 2)}
       ${mode('write', 'Écriture et dictée', 'Écris la réponse, ou écoute et écris')}
     </nav>` : `<p class="empty">Ce set est vide. <a href="#edit/${d.id}">Ajoute des cartes</a> ou <a href="#ai/${d.id}">fais-les générer par l’IA</a>.</p>`}
-    ${d.cards.length ? `<div class="row-head"><h2>Les cartes</h2><p class="legend muted small"><span class="dot d-done"></span>maîtrisée <span class="dot d-learn"></span>en cours <span class="dot d-new"></span>nouvelle</p></div>
+    ${d.cards.length ? `<div class="row-head"><h2>Les cartes</h2><p class="legend muted small"><span class="dot d-done"></span>maîtrisée (retenue 3 semaines et plus) <span class="dot d-learn"></span>en cours <span class="dot d-new"></span>jamais étudiée</p></div>
     <ol class="card-list">${d.cards.map(c => `<li>${dot(c)}<span class="cl-term">${esc(c.term)}</span><span class="cl-def">${c.img ? `<img class="thumb" src="${esc(c.img)}" alt="" loading="lazy">` : ''}${esc(c.def)}</span>
       <button class="star-btn" data-action="star" data-id="${c.id}" aria-pressed="${!!c.star}" aria-label="${c.star ? 'Retirer des favoris' : 'Ajouter aux favoris'} : ${esc(c.term)}">${icon('star')}</button></li>`).join('')}</ol>` : ''}`, {
     wide: true,

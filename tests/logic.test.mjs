@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseImport, parseCsv, toCsv, sameAnswer, review, buildQcm, merge, mergeDeck, cleanDeck, cleanProfile, mergeProfile, streak, dayKey, slug, DAY } from '../logic.js';
+import { parseImport, parseCsv, toCsv, sameAnswer, review, buildQcm, merge, mergeDeck, cleanDeck, cleanProfile, mergeProfile, streak, dayKey, slug, adopt, DAY } from '../logic.js';
 
 test('parseImport picks the first separator by priority', () => {
   const { cards, skipped } = parseImport('Paris\tcapitale ; France\nArticle 1240 ; Responsabilité\nHello - Bonjour\nsans séparateur\n\n');
@@ -122,4 +122,19 @@ test('profile merge and streaks', () => {
 
 test('slug fits the share-link format', () => {
   assert.match(slug(), /^[a-z0-9]{12}$/);
+});
+
+test('adopt updates deck and card objects in place', () => {
+  const c1 = { id: '1', term: 'a', def: 'b', u: 1 }, c2 = { id: '2', term: 'x', def: 'y', u: 1 };
+  const old = { id: 'd', title: 't', cards: [c1, c2], updatedAt: 1 };
+  const fresh = { id: 'd', title: 'T2', cards: [{ id: '2', term: 'x', def: 'y', u: 1, srs: { s: 4 } }, { id: '3', term: 'n', def: 'm', u: 2 }, c1], updatedAt: 2 };
+  const out = adopt(old, fresh);
+  assert.equal(out, old);
+  assert.equal(out.title, 'T2');
+  assert.equal(out.cards[0], c2); // a review screen holding c2 now writes into the live deck
+  assert.deepEqual(c2.srs, { s: 4 });
+  assert.equal(out.cards[2], c1);
+  assert.equal(c1.term, 'a');
+  assert.equal(out.cards.length, 3);
+  assert.equal(adopt(old, old), old);
 });

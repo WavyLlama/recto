@@ -1,5 +1,5 @@
 import { streak, dayKey, uid } from './logic.js?v=5';
-import { state, views, mount, app, esc, plural, icon, live, playable, dueIn, newIn, mastery, tint, meter, touch } from './core.js?v=5';
+import { state, views, mount, app, esc, plural, icon, live, playable, dueIn, newIn, mastery, tint, meter, touch, displayName } from './core.js?v=5';
 
 let folder = null; // selected folder chip; '' = sets without a folder
 
@@ -26,7 +26,7 @@ views.home = function homeView() {
   mount(`
     <section class="hero">
       <div class="hero-text">
-        <p class="eyebrow">${esc(today)}</p>
+        <p class="eyebrow">${displayName(state.user) ? `Bonjour ${esc(displayName(state.user))} · ` : ''}${esc(today)}</p>
         <h1>${title}</h1>
         <p class="lead">${lead}</p>
         <div class="goal">

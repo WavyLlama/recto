@@ -1,6 +1,6 @@
 import { shuffle, sameAnswer, review, buildQcm } from './logic.js?v=5';
 import {
-  state, views, mount, app, esc, plural, icon, toast, playable, live, touch, touchCard, backTo, backHome, logStudy,
+  state, views, mount, app, esc, plural, icon, toast, playable, live, touch, touchCard, backTo, backHome, logStudy, recordAnswer,
   speak, canSpeak, langOf, faceHTML, renderMath, store,
 } from './core.js?v=5';
 import { explain } from './ai.js?v=5';
@@ -166,10 +166,11 @@ views.learn = function learnView(d, fav) {
     if (!pending) return;
     if (pending.ok) {
       cur.p++;
-      if (cur.p >= 2) mastered++;
+      if (cur.p >= 2) { mastered++; recordAnswer(d, cur.c, true, cur.err ? 1 : 2); }
       else queue.splice(Math.min(queue.length, 3), 0, cur);
     } else {
       cur.p = 0;
+      cur.err = true;
       queue.splice(Math.min(queue.length, 2), 0, cur);
     }
     next();
@@ -250,6 +251,7 @@ views.test = function testView(d, fav) {
             : x.type === 'tf' ? v !== null && (v === '1') === x.truth
               : sameAnswer(v || '', x.c[x.a]);
           score += ok;
+          recordAnswer(d, x.c, ok);
           const fs = app.querySelector(`#q${i}`);
           fs.classList.add(ok ? 'ok' : 'ko');
           fs.disabled = true;
@@ -376,6 +378,7 @@ views.write = function writeView(d, fav, only = null, modeArg = null) {
   }
   function advance() {
     if (!pending) return;
+    recordAnswer(d, cards[i], pending.ok);
     if (pending.ok) ok++;
     else missed.push(cards[i]);
     i++;
