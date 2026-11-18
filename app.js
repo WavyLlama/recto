@@ -1,6 +1,6 @@
-import { uid, shuffle, parseImport, sameAnswer, review, buildQcm, merge, cleanDeck } from './logic.js';
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
-import { icon } from './icons.js';
+import { uid, shuffle, parseImport, sameAnswer, review, buildQcm, merge, cleanDeck } from './logic.js?v=4';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=4';
+import { icon } from './icons.js?v=4';
 
 const KEY = 'recto.decks.v1';
 const app = document.getElementById('app');
