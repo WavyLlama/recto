@@ -1,6 +1,6 @@
 // Accounts and sync with Supabase. Without config.js values the app stays local-only.
-import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=8';
-import { state, hooks, save, saveProfile, route, routeName, refreshIfIdle, fr, toast, displayName, avatarURL, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=8';
+import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=9';
+import { state, hooks, save, saveProfile, route, routeName, refreshIfIdle, fr, toast, displayName, avatarURL, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=9';
 
 export function setSync(s, msg = '') {
   state.sync = s;
@@ -17,7 +17,7 @@ export async function initSync() {
     toast(fr(back.get('error_description').replace(/\+/g, ' ')));
     history.replaceState(null, '', location.pathname);
   }
-  fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_KEY } })
+  fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_KEY }, cache: 'no-store' })
     .then(r => r.json()).then(s => { state.google = !!s.external?.google; if (routeName() === 'account') route(); }).catch(() => {});
   try {
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm');
