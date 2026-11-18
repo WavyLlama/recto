@@ -138,3 +138,11 @@ test('adopt updates deck and card objects in place', () => {
   assert.equal(out.cards.length, 3);
   assert.equal(adopt(old, old), old);
 });
+
+test('the "hide my pseudo" choice survives cleaning and merging', () => {
+  const a = cleanDeck({ id: 'd', title: 't', cards: [], updatedAt: 1, tu: 1, shareId: 'abcdefghjk23' });
+  const b = cleanDeck({ id: 'd', title: 't', cards: [], updatedAt: 2, tu: 2, shareId: 'abcdefghjk23', hideAuthor: true });
+  assert.equal(b.hideAuthor, true);
+  assert.equal(mergeDeck(a, b).hideAuthor, true);
+  assert.equal(cleanDeck({ id: 'd', title: 't', cards: [], updatedAt: 1, hideAuthor: true }).hideAuthor, undefined); // only on shared sets
+});

@@ -1,7 +1,7 @@
 // Shared state, helpers and view plumbing. Every module imports this file with the same URL.
-import { cleanDeck, cleanProfile, dayKey, uid, review, DAY } from './logic.js?v=6';
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=6';
-import { icon } from './icons.js?v=6';
+import { cleanDeck, cleanProfile, dayKey, uid, review, DAY } from './logic.js?v=7';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=7';
+import { icon } from './icons.js?v=7';
 export { SUPABASE_URL, SUPABASE_KEY, icon };
 
 export const app = document.getElementById('app');
@@ -186,11 +186,18 @@ export async function renderMath(el) {
 export const faceHTML = (text, img) => `${img ? `<img class="face-img" src="${esc(img)}" alt="" loading="lazy">` : ''}<span class="face-text">${esc(text)}</span>`;
 
 // ---------- profile (pseudo and photo live in the account's user_metadata)
-export const displayName = u => String(u?.user_metadata?.name || '').trim();
+// Recto keeps its own keys (pseudo, photo): Google rewrites name and avatar_url at every sign-in.
+// An empty string means "removed on purpose", so it does not fall back to Google's value.
+const meta = u => u?.user_metadata || {};
+export const displayName = u => String(meta(u).pseudo ?? meta(u).name ?? meta(u).full_name ?? '').trim();
+export const avatarURL = u => {
+  const url = meta(u).photo ?? meta(u).avatar_url ?? meta(u).picture ?? '';
+  return typeof url === 'string' && /^https:\/\//.test(url) ? url : '';
+};
 const hue = s => [...(s || '')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 210);
 export function avatarHTML(u, cls = '') {
-  const url = u?.user_metadata?.avatar_url;
-  if (typeof url === 'string' && /^https:\/\//.test(url)) return `<img class="avatar ${cls}" src="${esc(url)}" alt="">`;
+  const url = avatarURL(u);
+  if (url) return `<img class="avatar ${cls}" src="${esc(url)}" alt="">`;
   const label = displayName(u) || u?.email || '?';
   return `<span class="avatar ${cls}" style="--h:${hue(u?.email)}" aria-hidden="true">${esc(label.trim()[0].toUpperCase())}</span>`;
 }

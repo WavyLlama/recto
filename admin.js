@@ -1,6 +1,6 @@
 // Admin area. Every check is repeated server-side in supabase.sql.
-import { state, views, mount, app, esc, plural, icon, toast, fr, fmtDate, backHome } from './core.js?v=6';
-import { loadSettings } from './sync.js?v=6';
+import { state, views, mount, app, esc, plural, icon, toast, fr, fmtDate, backHome } from './core.js?v=7';
+import { loadSettings } from './sync.js?v=7';
 
 let tab = 'overview';
 
@@ -116,7 +116,7 @@ views.admin = function adminView() {
       body.innerHTML = `
         <div class="row-head"><h2>Signalements en attente <span class="pill">${reports.length}</span></h2><button class="btn" data-action="reload">${icon('review')}Actualiser</button></div>
         ${reports.length ? `<ul class="report-list">${reports.map(r => `<li class="panel">
-          <div class="report-head"><a href="#s/${r.shared_id}"><strong>${esc(r.title)}</strong></a>${r.hidden ? '<span class="badge-inline warn">Masqué</span>' : r.public ? '<span class="badge-inline">Public</span>' : ''}</div>
+          <div class="report-head"><a href="#s/${r.shared_id}"><strong>${esc(r.title)}</strong></a><span class="muted small">par ${esc(r.author_name || 'un membre anonyme')}</span>${r.hidden ? '<span class="badge-inline warn">Masqué</span>' : r.public ? '<span class="badge-inline">Public</span>' : ''}</div>
           <p>${esc(r.reason)}</p>
           <p class="muted small">Signalé le ${fmtDate(r.created_at)} par ${esc(r.reporter_email || 'un compte supprimé')}</p>
           <div class="actions">

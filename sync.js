@@ -1,6 +1,6 @@
 // Accounts and sync with Supabase. Without config.js values the app stays local-only.
-import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=6';
-import { state, hooks, save, saveProfile, route, routeName, refreshIfIdle, fr, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=6';
+import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=7';
+import { state, hooks, save, saveProfile, route, routeName, refreshIfIdle, fr, toast, displayName, avatarURL, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=7';
 
 export function setSync(s, msg = '') {
   state.sync = s;
@@ -11,6 +11,14 @@ export function setSync(s, msg = '') {
 export async function initSync() {
   if (!SUPABASE_URL || !SUPABASE_KEY) return setSync('off');
   setSync('loading');
+  // A failed Google sign-in comes back with the reason in the URL (e.g. sign-ups closed).
+  const back = new URLSearchParams(location.search + '&' + location.hash.slice(1));
+  if (back.get('error_description')) {
+    toast(fr(back.get('error_description').replace(/\+/g, ' ')));
+    history.replaceState(null, '', location.pathname);
+  }
+  fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_KEY } })
+    .then(r => r.json()).then(s => { state.google = !!s.external?.google; if (routeName() === 'account') route(); }).catch(() => {});
   try {
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm');
     state.sb = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -27,6 +35,7 @@ export async function initSync() {
     if (state.user?.id === before) { hooks.header(); return; } // e.g. pseudo or photo changed
     // Supabase advises against awaiting its own calls inside this callback.
     setTimeout(async () => {
+      await adoptProfile();
       await refreshAdmin();
       if (state.user) await pullAll();
       else setSync('signedout');
@@ -44,6 +53,19 @@ export async function loadSettings() {
   const bar = document.getElementById('announce');
   bar.textContent = state.settings.announcement;
   bar.hidden = !state.settings.announcement.trim();
+}
+
+// First sign-in with this version: copy the current name and photo (ours, or Google's) into pseudo/photo.
+async function adoptProfile() {
+  const m = state.user?.user_metadata;
+  if (!m || m.pseudo !== undefined) return;
+  const { data } = await state.sb.auth.updateUser({ data: { pseudo: displayName(state.user), photo: avatarURL(state.user) } });
+  if (data?.user) state.user = data.user;
+}
+
+// Re-sends every shared set so a new pseudo or photo shows up in Explorer.
+export function refreshShares() {
+  for (const d of Object.values(state.decks)) if (d.shareId && !d.deleted) push(d.id);
 }
 
 async function refreshAdmin() {
@@ -81,6 +103,7 @@ export async function pullAll() {
 }
 
 // What visitors of a share link see: no study progress, no favourites.
+export const author = d => (d.hideAuthor ? { author_name: null, author_avatar: null } : { author_name: displayName(state.user).slice(0, 40) || null, author_avatar: avatarURL(state.user) || null });
 export const snapshot = d => ({ title: d.title, langTerm: d.langTerm, langDef: d.langDef, cards: d.cards.map(c => ({ term: c.term, def: c.def, ...(c.img ? { img: c.img } : {}) })) });
 const sentShare = {};
 
@@ -90,7 +113,7 @@ export async function push(id) {
   const { error } = await sb.from('decks').upsert({ id, data: d, updated_at: new Date(d.updatedAt || Date.now()).toISOString() });
   if (error) { setSync('error', fr(error.message)); return false; }
   if (d.shareId && !d.deleted) {
-    const row = { title: d.title, card_count: d.cards.length, public: !!d.public, data: snapshot(d) };
+    const row = { title: d.title, card_count: d.cards.length, public: !!d.public, data: snapshot(d), ...author(d) };
     const key = JSON.stringify(row);
     if (sentShare[d.shareId] !== key) {
       const res = await sb.from('shared_decks').update({ ...row, updated_at: new Date().toISOString() }).eq('id', d.shareId);

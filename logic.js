@@ -202,6 +202,7 @@ export function cleanDeck(d) {
   if (typeof d.shareId === 'string' && /^[a-z0-9]{8,24}$/.test(d.shareId)) {
     out.shareId = d.shareId;
     if (d.public === true) out.public = true;
+    if (d.hideAuthor === true) out.hideAuthor = true;
   }
   if (typeof d.bestMatch === 'number') out.bestMatch = d.bestMatch;
   if (d.deleted === true) { out.deleted = true; out.deletedAt = d.deletedAt; }
@@ -215,7 +216,7 @@ export function cleanDeck(d) {
 
 // Card-level merge: the newest version of each card wins, deletions (gone) win over older edits,
 // deck settings follow the most recent settings change (tu).
-const META = ['title', 'folder', 'langTerm', 'langDef', 'shareId', 'public', 'deleted', 'deletedAt'];
+const META = ['title', 'folder', 'langTerm', 'langDef', 'shareId', 'public', 'hideAuthor', 'deleted', 'deletedAt'];
 export function mergeDeck(a, b) {
   if (!a || !b) return cleanDeck(a || b);
   const [newer, older] = a.updatedAt >= b.updatedAt ? [a, b] : [b, a];

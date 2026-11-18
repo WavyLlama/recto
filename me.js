@@ -1,11 +1,12 @@
 // My account, sign-in forms, settings and statistics.
-import { streak, dayKey, cleanDeck, DAY } from './logic.js?v=6';
+import { streak, dayKey, cleanDeck, DAY } from './logic.js?v=7';
 import {
   state, views, mount, app, esc, plural, icon, toast, fr, fmtDate, live, playable, tint, backHome, save, saveProfile, hooks,
-  download, getTheme, setTheme, SUPABASE_URL, MASTERED_DAYS, avatarHTML, displayName,
-} from './core.js?v=6';
-import { flushPushes, pullAll } from './sync.js?v=6';
+  download, getTheme, setTheme, SUPABASE_URL, MASTERED_DAYS, avatarHTML, displayName, avatarURL,
+} from './core.js?v=7';
+import { flushPushes, pullAll, refreshShares } from './sync.js?v=7';
 
+const GOOGLE_LOGO = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
 const SYNC = { off: 'Enregistré sur cet appareil', loading: 'Connexion…', signedout: 'Non connecté', syncing: 'Synchronisation…', idle: 'Synchronisé', error: 'Erreur de synchronisation' };
 const side = `<div class="auth-side" aria-hidden="true"><span class="sheet a3"></span><span class="sheet a2"></span><span class="sheet a1"><span class="sheet-label">Recto</span><span class="sheet-text">Tes fiches, sur tous tes appareils</span></span></div>`;
 
@@ -21,15 +22,17 @@ views.account = function accountView() {
       <button type="button" role="tab" aria-selected="${mode === 'in'}" data-action="mode" data-mode="in">Se connecter</button>
       <button type="button" role="tab" aria-selected="${mode === 'up'}" data-action="mode" data-mode="up">Créer un compte</button>
     </div>` : '';
+  // Shown only once Google sign-in is switched on in Supabase.
+  const google = state.google && (mode === 'in' || (mode === 'up' && !closed)) ? `<button class="btn google-btn lg" type="button" data-action="google">${GOOGLE_LOGO}Continuer avec Google</button><p class="or"><span>ou avec ton e-mail</span></p>` : '';
   const forms = {
-    in: `<h1>Bon retour</h1><p class="muted">Connecte-toi avec ton compte Recto. Première visite ? Choisis « Créer un compte » juste au-dessus.</p>
+    in: `<h1>Bon retour</h1><p class="muted">Connecte-toi avec ton compte Recto. Première visite ? Choisis « Créer un compte » juste au-dessus.</p>${google}
       <label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="email" required>
       <label for="password">Mot de passe</label><input id="password" name="password" type="password" autocomplete="current-password" required>
       <button class="link-btn" type="button" data-action="mode" data-mode="forgot">Mot de passe oublié ?</button>
       <p class="form-error" id="err" role="alert"></p>
       <button class="btn primary lg" type="submit">Se connecter</button>`,
     up: closed ? '<h1>Inscriptions fermées</h1><p class="muted">Les nouvelles inscriptions sont fermées pour le moment. Si tu as déjà un compte, connecte-toi.</p>'
-      : `<h1>Créer ton compte</h1><p class="muted">Gratuit. Tes sets se synchronisent automatiquement sur tous tes appareils, et ceux déjà créés ici sont gardés.</p>
+      : `<h1>Créer ton compte</h1><p class="muted">Gratuit. Tes sets se synchronisent automatiquement sur tous tes appareils, et ceux déjà créés ici sont gardés.</p>${google}
       <label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="email" required>
       <label for="password">Mot de passe</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
       <label for="password2">Confirme le mot de passe</label><input id="password2" name="password2" type="password" autocomplete="new-password" minlength="8" required>
@@ -49,7 +52,13 @@ views.account = function accountView() {
   mount(`${backHome}<div class="auth-wrap">${side}<form class="panel" id="login" novalidate>${tabs}${forms[mode]}</form></div>`, {
     wide: true,
     submit: auth,
-    click: { mode: el => { state.authMode = el.dataset.mode; accountView(); app.querySelector('#email, #password')?.focus(); } },
+    click: {
+      google: async el => {
+        el.disabled = true;
+        const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
+        if (error) { el.disabled = false; toast(fr(error.message)); }
+      },
+      mode: el => { state.authMode = el.dataset.mode; accountView(); app.querySelector('#email, #password')?.focus(); } },
   });
 };
 
@@ -109,9 +118,9 @@ function profileView() {
         <div class="profile-row">
           ${avatarHTML(user, 'xl')}
           <div class="actions">
-            <label class="btn" for="avatar-file">${icon('image')}${user.user_metadata?.avatar_url ? 'Changer la photo' : 'Ajouter une photo'}</label>
+            <label class="btn" for="avatar-file">${icon('image')}${avatarURL(user) ? 'Changer la photo' : 'Ajouter une photo'}</label>
             <input type="file" id="avatar-file" accept="image/*" hidden>
-            ${user.user_metadata?.avatar_url ? '<button class="btn ghost" type="button" data-action="noavatar">Retirer la photo</button>' : ''}
+            ${avatarURL(user) ? '<button class="btn ghost" type="button" data-action="noavatar">Retirer la photo</button>' : ''}
           </div>
         </div>
         <form id="name-form" class="inline" novalidate>
@@ -146,12 +155,13 @@ function profileView() {
       click: {
         sync: pullAll,
         noavatar: async () => {
-          const old = state.user.user_metadata?.avatar_url;
-          const res = await state.sb.auth.updateUser({ data: { avatar_url: null } });
+          const old = avatarURL(state.user);
+          const res = await state.sb.auth.updateUser({ data: { photo: '' } });
           if (res.error) return toast(fr(res.error.message));
           state.user = res.data.user;
           removeStored(old);
           hooks.header();
+          refreshShares();
           draw();
           toast('Photo retirée.');
         },
@@ -174,13 +184,14 @@ function profileView() {
           const path = `${state.user.id}/avatar-${Date.now()}.jpg`;
           const { error } = await state.sb.storage.from('images').upload(path, blob, { contentType: 'image/jpeg' });
           if (error) throw error;
-          const old = state.user.user_metadata?.avatar_url;
+          const old = avatarURL(state.user);
           const url = state.sb.storage.from('images').getPublicUrl(path).data.publicUrl;
-          const res = await state.sb.auth.updateUser({ data: { avatar_url: url } });
+          const res = await state.sb.auth.updateUser({ data: { photo: url } });
           if (res.error) throw res.error;
           state.user = res.data.user;
           removeStored(old);
           hooks.header();
+          refreshShares();
           draw();
           toast('Photo de profil mise à jour.');
         } catch (err) {
@@ -190,10 +201,11 @@ function profileView() {
       submit: async e => {
         if (e.target.id === 'name-form') {
           const value = app.querySelector('#name').value.trim().slice(0, 40);
-          const res = await state.sb.auth.updateUser({ data: { name: value } });
+          const res = await state.sb.auth.updateUser({ data: { pseudo: value } });
           if (res.error) return toast(fr(res.error.message));
           state.user = res.data.user;
           hooks.header();
+          refreshShares();
           draw();
           toast(value ? `Enchanté, ${value} !` : 'Pseudo retiré.');
           return;

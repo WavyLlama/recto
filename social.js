@@ -1,9 +1,11 @@
 // Share links, public sets (Explorer) and reports.
-import { slug, uid, cleanDeck } from './logic.js?v=6';
-import { state, views, mount, app, esc, plural, icon, toast, fr, touch, backHome, fmtDate, renderMath } from './core.js?v=6';
-import { snapshot } from './sync.js?v=6';
+import { slug, uid, cleanDeck } from './logic.js?v=7';
+import { state, views, mount, app, esc, plural, icon, toast, fr, touch, backHome, fmtDate, renderMath } from './core.js?v=7';
+import { snapshot, author } from './sync.js?v=7';
 
 const linkOf = id => `${location.origin}${location.pathname}#s/${id}`;
+// "par Tim", with the creator's photo; never the e-mail.
+const byline = (name, avatar, prefix = 'par') => `<span class="byline">${avatar && /^https:\/\//.test(avatar) ? `<img class="avatar xs" src="${esc(avatar)}" alt="">` : ''}${prefix} ${esc(name || 'un membre de Recto')}</span>`;
 
 export function shareHTML(d) {
   if (!state.user) {
@@ -16,6 +18,7 @@ export function shareHTML(d) {
   return `<div class="panel share-panel"><h2>Partager ce set</h2>
     <div class="inline"><label class="sr" for="share-url">Lien de partage</label><input id="share-url" readonly value="${esc(linkOf(d.shareId))}"><button class="btn primary" data-action="copylink">${icon('copy')}Copier</button></div>
     <label class="switch"><input type="checkbox" data-pub ${d.public ? 'checked' : ''}><span><strong>Visible par tous dans Explorer</strong><span class="muted small">Sinon, seules les personnes qui ont le lien peuvent l’ouvrir.</span></span></label>
+    <label class="switch"><input type="checkbox" data-author ${d.hideAuthor ? '' : 'checked'}><span><strong>Afficher mon pseudo</strong><span class="muted small">Ton pseudo et ta photo apparaissent avec le set. Décoche pour rester anonyme ; ton e-mail n’est jamais affiché.</span></span></label>
     <p class="muted small">Le lien suit tes modifications automatiquement.</p>
     <div class="actions"><button class="btn ghost" data-action="unshare">Arrêter le partage</button></div></div>`;
 }
@@ -31,6 +34,12 @@ export function stopShare(d, quiet = false) {
 
 // Checkboxes must not go through the click delegation (it cancels the default toggle).
 export function onShareChange(d, el) {
+  if (el.matches('[data-author]')) {
+    if (el.checked) delete d.hideAuthor; else d.hideAuthor = true;
+    touch(d, true);
+    toast(el.checked ? 'Ton pseudo apparaîtra avec ce set.' : 'Ce set est maintenant anonyme.');
+    return;
+  }
   if (!el.matches('[data-pub]')) return;
   if (el.checked) d.public = true; else delete d.public;
   touch(d, true);
@@ -42,7 +51,7 @@ export function shareActions(d, redraw) {
     mkshare: async el => {
       el.disabled = true;
       const id = slug();
-      const { error } = await state.sb.from('shared_decks').insert({ id, deck_id: d.id, title: d.title, card_count: d.cards.length, public: false, data: snapshot(d) });
+      const { error } = await state.sb.from('shared_decks').insert({ id, deck_id: d.id, title: d.title, card_count: d.cards.length, public: false, data: snapshot(d), ...author(d) });
       if (error) { el.disabled = false; return toast(fr(error.message)); }
       d.shareId = id;
       touch(d, true);
@@ -69,7 +78,7 @@ views.shared = async function sharedView(id) {
   let reporting = false;
   const draw = () => mount(`${backHome}
     <header class="deck-hero c0">
-      <div class="deck-hero-text"><p class="eyebrow">Set partagé · ${plural(cards.length, 'carte')}${row.public ? ' · public' : ''}</p><h1>${esc(row.title)}</h1><p class="muted small">Mis à jour le ${fmtDate(row.updated_at)}</p></div>
+      <div class="deck-hero-text"><p class="eyebrow">Set partagé · ${plural(cards.length, 'carte')}${row.public ? ' · public' : ''}</p><h1>${esc(row.title)}</h1><p class="muted small">${byline(row.author_name, row.author_avatar, 'Créé par')} · mis à jour le ${fmtDate(row.updated_at)}</p></div>
       <div class="actions">
         ${row.mine ? `<span class="pill">C’est ton set</span>` : `<button class="btn primary" data-action="copy">${icon('copy')}Copier dans mes sets</button>`}
         ${row.public && state.user && !row.mine ? `<button class="btn ghost" data-action="report">${icon('flag')}Signaler</button>` : ''}
@@ -130,14 +139,14 @@ views.explore = function exploreView() {
     const out = app.querySelector('#results');
     if (!out) return;
     if (!state.sb) { out.innerHTML = '<p class="muted">Chargement…</p>'; return; }
-    let req = state.sb.from('shared_decks').select('id,title,card_count,updated_at').eq('public', true).eq('hidden', false).order('updated_at', { ascending: false }).limit(48);
+    let req = state.sb.from('shared_decks').select('id,title,card_count,updated_at,author_name,author_avatar').eq('public', true).eq('hidden', false).order('updated_at', { ascending: false }).limit(48);
     if (q) req = req.ilike('title', `%${q.replace(/[%_\\]/g, m => `\\${m}`)}%`);
     const asked = q;
     const { data, error } = await req;
     if (asked !== q || !app.querySelector('#results')) return;
     if (error) { out.innerHTML = `<p class="form-error">${esc(fr(error.message))}</p>`; return; }
     out.innerHTML = data.length
-      ? `<ul class="decks">${data.map(r => `<li><a class="deck c${r.id.charCodeAt(0) % 6}" href="#s/${r.id}"><span class="deck-top"><span class="deck-title">${esc(r.title)}</span></span><span class="deck-meta">${plural(r.card_count, 'carte')} · mis à jour le ${fmtDate(r.updated_at)}</span></a></li>`).join('')}</ul>`
+      ? `<ul class="decks">${data.map(r => `<li><a class="deck c${r.id.charCodeAt(0) % 6}" href="#s/${r.id}"><span class="deck-top"><span class="deck-title">${esc(r.title)}</span></span><span class="deck-meta">${byline(r.author_name, r.author_avatar)} · ${plural(r.card_count, 'carte')}</span></a></li>`).join('')}</ul>`
       : `<p class="empty">${q ? `Aucun set public ne correspond à « ${esc(q)} ».` : 'Aucun set public pour l’instant. Partage un des tiens et coche « Visible par tous dans Explorer ».'}</p>`;
     renderMath(out);
   }

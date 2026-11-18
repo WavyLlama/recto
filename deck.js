@@ -1,10 +1,10 @@
-import { uid, parseImport, parseCsv, toCsv, cleanDeck } from './logic.js?v=6';
+import { uid, parseImport, parseCsv, toCsv, cleanDeck } from './logic.js?v=7';
 import {
   state, views, mount, app, esc, plural, icon, toast, download, playable, dueIn, newIn, mastery, tint, meter, touch, touchCard,
   removeCards, backHome, backTo, autosize, live, trashed, purge, fmtDate, LANGS, MASTERED_DAYS, TRASH_DAYS, fr,
-} from './core.js?v=6';
-import { shareHTML, shareActions, stopShare, onShareChange } from './social.js?v=6';
-import { improveQcm } from './ai.js?v=6';
+} from './core.js?v=7';
+import { shareHTML, shareActions, stopShare, onShareChange } from './social.js?v=7';
+import { improveQcm } from './ai.js?v=7';
 
 const favOnly = {}; // deck id -> study only starred cards
 
