@@ -1,9 +1,9 @@
-import { shuffle, sameAnswer, review, buildQcm } from './logic.js?v=5';
+import { shuffle, sameAnswer, review, buildQcm } from './logic.js?v=6';
 import {
   state, views, mount, app, esc, plural, icon, toast, playable, live, touch, touchCard, backTo, backHome, logStudy, recordAnswer,
   speak, canSpeak, langOf, faceHTML, renderMath, store,
-} from './core.js?v=5';
-import { explain } from './ai.js?v=5';
+} from './core.js?v=6';
+import { explain } from './ai.js?v=6';
 
 const other = side => (side === 'term' ? 'def' : 'term');
 const sideText = (c, side) => c[side];

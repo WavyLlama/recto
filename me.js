@@ -1,10 +1,10 @@
 // My account, sign-in forms, settings and statistics.
-import { streak, dayKey, cleanDeck, DAY } from './logic.js?v=5';
+import { streak, dayKey, cleanDeck, DAY } from './logic.js?v=6';
 import {
   state, views, mount, app, esc, plural, icon, toast, fr, fmtDate, live, playable, tint, backHome, save, saveProfile, hooks,
   download, getTheme, setTheme, SUPABASE_URL, MASTERED_DAYS, avatarHTML, displayName,
-} from './core.js?v=5';
-import { flushPushes, pullAll } from './sync.js?v=5';
+} from './core.js?v=6';
+import { flushPushes, pullAll } from './sync.js?v=6';
 
 const SYNC = { off: 'Enregistré sur cet appareil', loading: 'Connexion…', signedout: 'Non connecté', syncing: 'Synchronisation…', idle: 'Synchronisé', error: 'Erreur de synchronisation' };
 const side = `<div class="auth-side" aria-hidden="true"><span class="sheet a3"></span><span class="sheet a2"></span><span class="sheet a1"><span class="sheet-label">Recto</span><span class="sheet-text">Tes fiches, sur tous tes appareils</span></span></div>`;

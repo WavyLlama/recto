@@ -1,7 +1,7 @@
 // AI features. The model is called by the Supabase Edge Function "ai" (supabase/functions/ai),
 // which holds the API key and enforces a daily quota per account.
-import { uid, cleanDeck } from './logic.js?v=5';
-import { state, views, mount, app, esc, plural, icon, toast, touch, backHome, backTo, loadScript, playable, renderMath } from './core.js?v=5';
+import { uid, cleanDeck } from './logic.js?v=6';
+import { state, views, mount, app, esc, plural, icon, toast, touch, backHome, backTo, loadScript, playable, renderMath } from './core.js?v=6';
 
 async function callAi(body) {
   if (!state.sb || !state.user) throw new Error('Connecte-toi pour utiliser l’IA.');

@@ -1,7 +1,7 @@
 // Share links, public sets (Explorer) and reports.
-import { slug, uid, cleanDeck } from './logic.js?v=5';
-import { state, views, mount, app, esc, plural, icon, toast, fr, touch, backHome, fmtDate, renderMath } from './core.js?v=5';
-import { snapshot } from './sync.js?v=5';
+import { slug, uid, cleanDeck } from './logic.js?v=6';
+import { state, views, mount, app, esc, plural, icon, toast, fr, touch, backHome, fmtDate, renderMath } from './core.js?v=6';
+import { snapshot } from './sync.js?v=6';
 
 const linkOf = id => `${location.origin}${location.pathname}#s/${id}`;
 
