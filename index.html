@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Recto</title>
+  <meta name="description" content="Mes cartes de révision : cartes, apprentissage, test, association et révision espacée.">
+  <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='6' width='28' height='20' rx='3' fill='%23fff' stroke='%2316181d' stroke-width='2'/%3E%3Cpath d='M2 12h28' stroke='%23d6453d' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=Inter:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="bar">
+      <a class="brand" href="#"><span class="brand-mark" aria-hidden="true"></span>Recto</a>
+      <nav class="nav" aria-label="Navigation principale">
+        <a href="#" data-nav="home">Mes sets</a>
+        <a href="#review" data-nav="review">Réviser</a>
+        <a href="#admin" data-nav="admin" hidden>Admin</a>
+      </nav>
+      <a class="sync" id="sync" href="#account">Sur cet appareil</a>
+    </div>
+  </header>
+  <div id="announce" class="announce" role="status" hidden></div>
+  <main id="app">
+    <noscript><p>Recto a besoin de JavaScript pour fonctionner.</p></noscript>
+  </main>
+  <footer class="foot"><p>Recto · tes fiches de révision, sur tous tes appareils.</p></footer>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
