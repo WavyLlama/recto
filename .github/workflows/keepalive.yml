@@ -1,0 +1,33 @@
+# Keeps the free Supabase project awake (it pauses after about a week without activity)
+# and, once a month, the repository too (GitHub turns off scheduled tasks after 60 days without a commit).
+name: Garder Supabase actif
+
+on:
+  schedule:
+    - cron: '0 5 * * *' # every day at 05:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lire les réglages publics du site
+        # Public read with the publishable key: the same request any visitor makes.
+        run: >
+          curl --fail --silent --show-error --max-time 30
+          "https://dioqgkpdxtyjlbihrbuo.supabase.co/rest/v1/settings?select=signups_open"
+          -H "apikey: sb_publishable_01mH9CeUGGrnijcz2snXFA_qlFoUD1S"
+
+      - uses: actions/checkout@v4
+
+      - name: Garder le dépôt actif (le 1er du mois)
+        run: |
+          if [ "$(date -u +%d)" != "01" ] && [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then exit 0; fi
+          date -u +%Y-%m-%dT%H:%MZ > keepalive.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add keepalive.txt
+          git commit -m "Garder le dépôt actif" && git push
