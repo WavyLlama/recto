@@ -785,7 +785,7 @@ function accountView() {
       <button role="tab" aria-selected="${authMode === 'up'}" data-action="mode" data-mode="up">Créer un compte</button>
     </div>` : '';
   const forms = {
-    in: `<h1>Bon retour</h1><p class="muted">Connecte-toi pour retrouver tes sets sur ton téléphone et ton ordinateur.</p>
+    in: `<h1>Bon retour</h1><p class="muted">Connecte-toi avec ton compte Recto. Première visite ? Choisis « Créer un compte » juste au-dessus.</p>
       <label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="email" required>
       <label for="password">Mot de passe</label><input id="password" name="password" type="password" autocomplete="current-password" required>
       <button class="link-btn" type="button" data-action="mode" data-mode="forgot">Mot de passe oublié ?</button>
@@ -831,6 +831,10 @@ async function auth() {
   else if (authMode === 'forgot') res = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
   else res = await sb.auth.updateUser({ password });
   button.disabled = false;
+  if (res.error && authMode === 'in' && /invalid login credentials/i.test(res.error.message)) {
+    err.innerHTML = 'E-mail ou mot de passe incorrect. Pas encore de compte Recto ? Ton compte GitHub ou Google ne marche pas ici : <button class="link-btn" type="button" data-action="mode" data-mode="up">crée ton compte Recto</button>.';
+    return;
+  }
   if (res.error) { err.textContent = fr(res.error.message); return; }
   if (authMode === 'up' && !res.data.session) { err.textContent = 'Compte créé. Clique sur le lien reçu par e-mail pour l’activer, puis connecte-toi.'; return; }
   if (authMode === 'forgot') { err.textContent = 'Si un compte existe avec cet e-mail, le lien vient de partir. Pense à vérifier les indésirables.'; return; }
