@@ -114,3 +114,9 @@ revoke execute on function public.admin_users(), public.admin_set_admin(uuid, bo
 grant execute on function public.admin_users(), public.admin_set_admin(uuid, boolean),
   public.admin_delete_user(uuid), public.delete_my_account(), public.is_admin() to authenticated;
 revoke execute on function public.on_signup_before(), public.on_signup_after() from public, anon, authenticated;
+
+-- Table privileges (new Supabase projects grant nothing by default; row-level security still applies).
+grant select on public.settings to anon, authenticated;
+grant update (signups_open, announcement) on public.settings to authenticated;
+grant select, insert, update, delete on public.decks to authenticated;
+grant select on public.admins to authenticated;

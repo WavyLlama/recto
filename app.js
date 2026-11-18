@@ -628,7 +628,7 @@ async function initSync() {
   setSync(syncState);
   if (!SUPABASE_URL || !SUPABASE_KEY) return;
   try {
-    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm');
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm');
     sb = createClient(SUPABASE_URL, SUPABASE_KEY);
   } catch {
     setSync('error', 'Le service de synchronisation ne répond pas. Tes sets restent enregistrés sur cet appareil.');
