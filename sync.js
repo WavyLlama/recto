@@ -1,6 +1,6 @@
 // Accounts and sync with Supabase. Without config.js values the app stays local-only.
-import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=7';
-import { state, hooks, save, saveProfile, route, routeName, refreshIfIdle, fr, toast, displayName, avatarURL, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=7';
+import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=8';
+import { state, hooks, save, saveProfile, route, routeName, refreshIfIdle, fr, toast, displayName, avatarURL, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=8';
 
 export function setSync(s, msg = '') {
   state.sync = s;
@@ -37,7 +37,7 @@ export async function initSync() {
     setTimeout(async () => {
       await adoptProfile();
       await refreshAdmin();
-      if (state.user) await pullAll();
+      if (state.user) { await pullAll(); refreshShares(); } // shares get the current pseudo and photo
       else setSync('signedout');
       if (['', 'account', 'admin', 'settings', 's', 'explore', 'ai'].includes(routeName())) route();
     }, 0);
