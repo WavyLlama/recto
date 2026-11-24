@@ -1,6 +1,6 @@
 // Admin area. Every check is repeated server-side in supabase.sql.
-import { state, views, mount, app, esc, plural, icon, toast, fr, fmtDate, backHome } from './core.js?v=12';
-import { loadSettings } from './sync.js?v=12';
+import { state, views, mount, app, esc, plural, icon, toast, fr, fmtDate, backHome } from './core.js?v=13';
+import { loadSettings } from './sync.js?v=13';
 
 let tab = 'overview';
 

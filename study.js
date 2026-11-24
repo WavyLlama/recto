@@ -1,9 +1,9 @@
-import { shuffle, sameAnswer, review, buildQcm } from './logic.js?v=12';
+import { shuffle, sameAnswer, review, buildQcm } from './logic.js?v=13';
 import {
   state, views, mount, app, esc, plural, icon, toast, playable, live, touch, touchCard, backTo, backHome, logStudy, recordAnswer,
   speak, canSpeak, langOf, faceHTML, renderMath, store,
-} from './core.js?v=12';
-import { explain, gradeAnswers, warmUp } from './ai.js?v=12';
+} from './core.js?v=13';
+import { explain, gradeAnswers, warmUp } from './ai.js?v=13';
 
 const other = side => (side === 'term' ? 'def' : 'term');
 const sideText = (c, side) => c[side];
@@ -288,6 +288,16 @@ views.test = function testView(d, fav) {
             btn.textContent = `L’IA vérifie la réponse ${k + 1} sur ${toCheck.length}…`;
             checks[i] = await checkWritten(qs[i].c, qs[i].a, given[i]);
             if (checks[i].ok) verdict[i] = true;
+          }
+          // Google's free AI is sometimes overloaded for a few seconds: try those answers again once.
+          const failed = toCheck.filter(i => checks[i].aiError);
+          if (failed.length) {
+            btn.textContent = 'L’IA est très demandée, nouvel essai…';
+            await new Promise(res => setTimeout(res, 3000));
+            for (const i of failed) {
+              checks[i] = await checkWritten(qs[i].c, qs[i].a, given[i]);
+              if (checks[i].ok) verdict[i] = true;
+            }
           }
         }
         let score = 0;

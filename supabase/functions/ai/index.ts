@@ -38,6 +38,11 @@ async function gemini(parts: unknown[], key: string, quick = false) {
       r = await call(model, false);
       // A model that refuses the "no thinking" setting answers 400: ask it again without it.
       if (quick && r.status === 400) r = await call(model, true);
+      // Google's free models are briefly overloaded at peak times: one more try after a pause.
+      if (r.status === 503) {
+        await new Promise(res => setTimeout(res, 1200));
+        r = await call(model, false);
+      }
     } catch {
       console.error(`Gemini model ${model} timed out, trying the next one`);
       r = null;

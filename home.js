@@ -1,5 +1,5 @@
-import { streak, dayKey, uid } from './logic.js?v=12';
-import { state, views, mount, app, esc, plural, icon, live, playable, dueIn, newIn, mastery, tint, meter, touch, displayName, SUPABASE_URL } from './core.js?v=12';
+import { streak, dayKey, uid } from './logic.js?v=13';
+import { state, views, mount, app, esc, plural, icon, live, playable, dueIn, newIn, mastery, tint, meter, touch, displayName, SUPABASE_URL } from './core.js?v=13';
 
 let folder = null; // selected folder chip; '' = sets without a folder
 
