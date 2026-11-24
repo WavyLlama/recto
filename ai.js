@@ -1,7 +1,7 @@
 // AI features. The model is called by the Supabase Edge Function "ai" (supabase/functions/ai),
 // which holds the API key and enforces a daily quota per account.
-import { uid, cleanDeck } from './logic.js?v=10';
-import { state, views, mount, app, esc, plural, icon, toast, touch, backHome, backTo, loadScript, playable, renderMath } from './core.js?v=10';
+import { uid, cleanDeck } from './logic.js?v=11';
+import { state, views, mount, app, esc, plural, icon, toast, touch, backHome, backTo, loadScript, playable, renderMath } from './core.js?v=11';
 
 async function callAi(body) {
   if (!state.sb || !state.user) throw new Error('Connecte-toi pour utiliser l’IA.');
@@ -13,6 +13,12 @@ async function callAi(body) {
   }
   if (data?.error) throw new Error(data.error);
   return data;
+}
+
+// Asks the AI whether written answers are right in substance. items: [{ term, def, side, given }].
+export async function gradeAnswers(items) {
+  const { results } = await callAi({ mode: 'grade', items });
+  return Array.isArray(results) ? results : [];
 }
 
 export async function explain(card, given, answerSide) {

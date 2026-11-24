@@ -1,14 +1,33 @@
-import { shuffle, sameAnswer, review, buildQcm } from './logic.js?v=10';
+import { shuffle, sameAnswer, review, buildQcm } from './logic.js?v=11';
 import {
   state, views, mount, app, esc, plural, icon, toast, playable, live, touch, touchCard, backTo, backHome, logStudy, recordAnswer,
   speak, canSpeak, langOf, faceHTML, renderMath, store,
-} from './core.js?v=10';
-import { explain } from './ai.js?v=10';
+} from './core.js?v=11';
+import { explain, gradeAnswers } from './ai.js?v=11';
 
 const other = side => (side === 'term' ? 'def' : 'term');
 const sideText = (c, side) => c[side];
 const sideImg = (c, side) => (side === 'def' ? c.img : null);
 const sideHTML = (c, side) => faceHTML(sideText(c, side), sideImg(c, side));
+// A written answer: exact match first; otherwise, when signed in, the AI judges it on substance.
+async function checkWritten(c, side, given) {
+  if (sameAnswer(given, c[side])) return { ok: true };
+  if (!state.user) return { ok: false };
+  try {
+    const [r] = await gradeAnswers([{ term: c.term, def: c.def, side, given }]);
+    return { ok: r?.correct === true, note: r?.feedback || '', ai: true };
+  } catch (err) {
+    return { ok: false, aiError: err.message };
+  }
+}
+const busyButton = () => {
+  const b = app.querySelector('#ask-actions [type=submit]');
+  if (b) { b.disabled = true; b.textContent = 'Vérification…'; }
+};
+// Feedback lines added by the AI check.
+const aiLines = (r, ok) => (!r ? '' : r.aiError ? `<p class="muted small">L’IA n’a pas pu vérifier : ${esc(r.aiError)}</p>`
+  : r.ai && r.note ? `<p class="ai-note">${icon('sparkle')}<span>${ok ? 'Accepté par l’IA : ' : ''}${esc(r.note)}</span></p>` : '');
+
 const favTag = fav => (fav ? '<span class="pill">Favoris</span>' : '');
 const head = (d, title, fav, extra = '') => `${backTo(d)}<div class="study-head"><h1 class="mode-title">${title} ${favTag(fav)}</h1>${extra}</div>`;
 
@@ -86,7 +105,7 @@ views.learn = function learnView(d, fav) {
   const all = playable(d, fav), total = all.length;
   const pool = playable(d); // wrong options may come from the whole set
   const queue = shuffle(all).map(c => ({ c, p: 0 }));
-  let mastered = 0, cur = null, pending = null, opts = [], q = 'term';
+  let mastered = 0, cur = null, pending = null, opts = [], q = 'term', checking = false;
   const top = () => `${head(d, 'Apprendre', fav)}${dirBar(dir)}
     <div class="progress" role="progressbar" aria-label="Cartes maîtrisées" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${mastered}"><span style="width:${(mastered / total) * 100}%"></span></div>
     <p class="muted small">${mastered} / ${total} maîtrisée${mastered > 1 ? 's' : ''}</p>`;
@@ -114,14 +133,22 @@ views.learn = function learnView(d, fav) {
         <label class="sr" for="ans">Ta réponse</label>
         <input id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Ta réponse">
         <div class="actions" id="ask-actions"><button class="btn primary" type="submit">Valider</button><button class="btn ghost" type="button" data-action="idk">Je ne sais pas</button></div></form>`, {
-        submit: () => { const v = app.querySelector('#ans').value; if (!pending && v.trim()) answer(sameAnswer(v, cur.c[a]), v); },
+        submit: async () => {
+          const v = app.querySelector('#ans').value;
+          if (pending || checking || !v.trim()) return;
+          checking = true;
+          busyButton();
+          const r = await checkWritten(cur.c, a, v);
+          checking = false;
+          answer(r.ok, v, r);
+        },
         click: { ...common, idk: () => answer(false, ''), cont: advance, explain: doExplain, override: () => { pending.ok = true; advance(); } },
       });
       app.querySelector('#ans').focus();
     }
   }
 
-  function answer(ok, given) {
+  function answer(ok, given, check = null) {
     if (pending) return;
     const a = other(q), qcm = cur.p === 0;
     pending = { ok, given: qcm ? opts[given] : given };
@@ -139,8 +166,9 @@ views.learn = function learnView(d, fav) {
     const fb = document.createElement('div');
     fb.className = `feedback ${ok ? 'ok' : 'ko'}`;
     fb.setAttribute('role', 'status');
-    fb.innerHTML = `${ok ? '<p><strong>Correct.</strong></p>'
+    fb.innerHTML = `${ok ? `<p><strong>Correct.</strong>${check?.ai ? ` Réponse attendue : <span class="expected">${esc(cur.c[a])}</span>` : ''}</p>`
       : `<p><strong>${given === '' ? 'Voici la réponse.' : 'Pas tout à fait.'}</strong> Réponse attendue : <span class="expected">${esc(cur.c[a])}</span></p>`}
+      ${aiLines(check, ok)}
       <div class="explain-slot"></div>
       <div class="actions"><button class="btn primary" data-action="cont">Continuer</button>
         ${!ok && !qcm && given !== '' ? '<button class="btn ghost" data-action="override">J’avais raison</button>' : ''}
@@ -239,17 +267,30 @@ views.test = function testView(d, fav) {
       <form class="test" novalidate>${qs.map((x, i) => `<fieldset class="tq" id="q${i}">${body(x, i)}</fieldset>`).join('')}
       <div class="actions" id="test-actions"><button class="btn primary lg" type="submit">Corriger</button></div></form>`, {
       cleanup: () => clearInterval(timer),
-      submit: () => {
+      submit: async () => {
         if (graded) return;
         graded = true;
         clearInterval(timer);
         const form = app.querySelector('form.test'), data = new FormData(form);
+        const given = qs.map((_, i) => data.get(`q${i}`));
+        const verdict = qs.map((x, i) => (x.type === 'qcm' ? given[i] !== null && x.opts[+given[i]] === x.c[x.a]
+          : x.type === 'tf' ? given[i] !== null && (given[i] === '1') === x.truth
+            : sameAnswer(given[i] || '', x.c[x.a])));
+        // Written answers that are not exact go to the AI, one request per answer.
+        const checks = {};
+        const toCheck = qs.map((_, i) => i).filter(i => qs[i].type === 'write' && !verdict[i] && (given[i] || '').trim());
+        if (toCheck.length && state.user) {
+          const btn = form.querySelector('[type=submit]');
+          btn.disabled = true;
+          for (const [k, i] of toCheck.entries()) {
+            btn.textContent = `L’IA vérifie la réponse ${k + 1} sur ${toCheck.length}…`;
+            checks[i] = await checkWritten(qs[i].c, qs[i].a, given[i]);
+            if (checks[i].ok) verdict[i] = true;
+          }
+        }
         let score = 0;
         qs.forEach((x, i) => {
-          const v = data.get(`q${i}`);
-          const ok = x.type === 'qcm' ? v !== null && x.opts[+v] === x.c[x.a]
-            : x.type === 'tf' ? v !== null && (v === '1') === x.truth
-              : sameAnswer(v || '', x.c[x.a]);
+          const ok = verdict[i];
           score += ok;
           recordAnswer(d, x.c, ok);
           const fs = app.querySelector(`#q${i}`);
@@ -259,6 +300,7 @@ views.test = function testView(d, fav) {
             const right = x.type === 'tf' ? (x.truth ? 'Vrai' : `Faux : ${x.c[x.q]} → ${x.c[x.a]}`) : x.c[x.a];
             fs.insertAdjacentHTML('beforeend', `<p class="expected-line">Réponse : ${esc(right)}</p>`);
           }
+          if (checks[i]) fs.insertAdjacentHTML('beforeend', aiLines(checks[i], ok));
         });
         logStudy(qs.length);
         form.insertAdjacentHTML('afterbegin', `<div class="score" role="status"><strong>${score} / ${qs.length}</strong><span>${Math.round((score / qs.length) * 100)} %</span><span class="muted">en ${elapsed()}</span></div>`);
@@ -321,7 +363,7 @@ views.write = function writeView(d, fav, only = null, modeArg = null) {
   const mode = modeArg || store.get('recto.write') || 'write'; // write: read the definition, type the term · dictee: hear the term, type it
   const cards = only || shuffle(playable(d, fav));
   const missed = [];
-  let i = 0, ok = 0, pending = null;
+  let i = 0, ok = 0, pending = null, checking = false;
   const bar = `<div class="seg" role="group" aria-label="Mode">
     <button type="button" data-action="mode" data-m="write" aria-pressed="${mode === 'write'}">${icon('write')}Écriture</button>
     ${canSpeak ? `<button type="button" data-action="mode" data-m="dictee" aria-pressed="${mode === 'dictee'}">${icon('headphones')}Dictée</button>` : ''}</div>`;
@@ -347,7 +389,15 @@ views.write = function writeView(d, fav, only = null, modeArg = null) {
         <div class="actions" id="ask-actions"><button class="btn primary" type="submit">Valider</button><button class="btn ghost" type="button" data-action="idk">Je ne sais pas</button></div>
       </form>`, {
       cleanup: () => canSpeak && speechSynthesis.cancel(),
-      submit: () => { const v = app.querySelector('#ans').value; if (!pending && v.trim()) answer(sameAnswer(v, c.term), v); },
+      submit: async () => {
+        const v = app.querySelector('#ans').value;
+        if (pending || checking || !v.trim()) return;
+        checking = true;
+        busyButton();
+        const r = await checkWritten(c, 'term', v);
+        checking = false;
+        answer(r.ok, v, r);
+      },
       click: {
         ...common,
         listen: () => speak(c.term, langOf(d, 'term')),
@@ -359,7 +409,7 @@ views.write = function writeView(d, fav, only = null, modeArg = null) {
     app.querySelector('#ans').focus();
     if (dictee) speak(c.term, langOf(d, 'term'));
 
-    function answer(good, given) {
+    function answer(good, given, check = null) {
       if (pending) return;
       pending = { ok: good };
       logStudy();
@@ -368,7 +418,8 @@ views.write = function writeView(d, fav, only = null, modeArg = null) {
       const fb = document.createElement('div');
       fb.className = `feedback ${good ? 'ok' : 'ko'}`;
       fb.setAttribute('role', 'status');
-      fb.innerHTML = `${good ? '<p><strong>Correct.</strong></p>' : `<p><strong>${given ? 'Pas tout à fait.' : 'Voici la réponse.'}</strong> Réponse attendue : <span class="expected">${esc(c.term)}</span></p>`}
+      fb.innerHTML = `${good ? `<p><strong>Correct.</strong>${check?.ai ? ` Réponse attendue : <span class="expected">${esc(c.term)}</span>` : ''}</p>` : `<p><strong>${given ? 'Pas tout à fait.' : 'Voici la réponse.'}</strong> Réponse attendue : <span class="expected">${esc(c.term)}</span></p>`}
+        ${aiLines(check, good)}
         ${dictee ? `<p class="muted small">${esc(c.def)}</p>` : ''}
         <div class="actions"><button class="btn primary" data-action="cont">Continuer</button>${!good && given ? '<button class="btn ghost" data-action="override">J’avais raison</button>' : ''}</div>`;
       app.querySelector('.question').append(fb);

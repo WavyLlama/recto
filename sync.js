@@ -1,6 +1,6 @@
 // Accounts and sync with Supabase. Without config.js values the app stays local-only.
-import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=10';
-import { state, hooks, save, saveProfile, store, route, routeName, refreshIfIdle, fr, toast, displayName, avatarURL, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=10';
+import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=11';
+import { state, hooks, save, saveProfile, store, route, routeName, refreshIfIdle, fr, toast, displayName, avatarURL, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=11';
 
 export function setSync(s, msg = '') {
   state.sync = s;

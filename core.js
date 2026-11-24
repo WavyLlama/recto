@@ -1,7 +1,7 @@
 // Shared state, helpers and view plumbing. Every module imports this file with the same URL.
-import { cleanDeck, cleanProfile, dayKey, uid, review, DAY } from './logic.js?v=10';
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=10';
-import { icon } from './icons.js?v=10';
+import { cleanDeck, cleanProfile, dayKey, uid, review, DAY } from './logic.js?v=11';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=11';
+import { icon } from './icons.js?v=11';
 export { SUPABASE_URL, SUPABASE_KEY, icon };
 
 export const app = document.getElementById('app');
