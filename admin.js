@@ -1,6 +1,6 @@
 // Admin area. Every check is repeated server-side in supabase.sql.
-import { state, views, mount, app, esc, plural, icon, toast, fr, fmtDate, backHome } from './core.js?v=13';
-import { loadSettings } from './sync.js?v=13';
+import { state, views, mount, app, esc, plural, icon, toast, fr, fmtDate, backHome } from './core.js?v=14';
+import { loadSettings } from './sync.js?v=14';
 
 let tab = 'overview';
 
@@ -9,12 +9,12 @@ views.admin = function adminView() {
   if (!sb || !user || !state.isAdmin) {
     return mount(`${backHome}<section class="panel"><h1>Espace admin</h1><p class="muted">${user ? 'Cette page est réservée aux administrateurs.' : 'Connecte-toi avec un compte administrateur pour accéder à cette page.'}</p>${user ? '' : '<a class="btn primary" href="#account">Se connecter</a>'}</section>`);
   }
-  let users = [], reports = [], ask = null, pwFor = null, loaded = false;
+  let users = [], reports = [], errors = [], ask = null, pwFor = null, loaded = false;
 
   mount(`${backHome}
     <header class="page-head"><p class="eyebrow">Administration</p><h1>Espace admin</h1><p class="muted">Gère les comptes, les réglages du site et les sets publics signalés. Tu vois le nombre de sets de chacun, jamais leur contenu privé.</p></header>
     <div class="tabs admin-tabs" role="tablist">
-      ${[['overview', 'Vue d’ensemble'], ['users', 'Comptes'], ['mod', 'Modération']].map(([k, l]) => `<button type="button" role="tab" data-action="tab" data-t="${k}" aria-selected="${tab === k}">${l}<span class="tab-count" data-count="${k}"></span></button>`).join('')}
+      ${[['overview', 'Vue d’ensemble'], ['users', 'Comptes'], ['mod', 'Modération'], ['errors', 'Erreurs']].map(([k, l]) => `<button type="button" role="tab" data-action="tab" data-t="${k}" aria-selected="${tab === k}">${l}<span class="tab-count" data-count="${k}"></span></button>`).join('')}
     </div>
     <div id="admin-body" class="admin"><p class="muted">Chargement…</p></div>`, {
     wide: true,
@@ -36,6 +36,7 @@ views.admin = function adminView() {
       unhide: el => rpc('admin_moderate', { slug: el.dataset.id, action: 'unhide' }, 'Set de nouveau visible.'),
       rmshare: el => rpc('admin_moderate', { slug: el.dataset.id, action: 'delete' }, 'Partage supprimé.'),
       resolve: el => rpc('admin_resolve_report', { report_id: +el.dataset.id }, 'Signalement classé.'),
+      clearerr: () => rpc('admin_clear_errors', {}, 'Journal vidé.'),
     },
     submit: async () => {
       const f = app.querySelector('#settings-form').elements;
@@ -56,7 +57,8 @@ views.admin = function adminView() {
   }
 
   async function load() {
-    const [u, r] = await Promise.all([sb.rpc('admin_users'), sb.rpc('admin_reports')]);
+    const [u, r, e] = await Promise.all([sb.rpc('admin_users'), sb.rpc('admin_reports'), sb.rpc('admin_errors')]);
+    errors = e.data || [];
     const body = app.querySelector('#admin-body');
     if (!body) return;
     if (u.error) { body.innerHTML = `<p class="form-error">${esc(fr(u.error.message))}</p>`; return; }
@@ -71,6 +73,8 @@ views.admin = function adminView() {
     if (!body || !loaded) return;
     const c = app.querySelector('[data-count="mod"]');
     if (c) c.textContent = reports.length ? ` ${reports.length}` : '';
+    const ce = app.querySelector('[data-count="errors"]');
+    if (ce) ce.textContent = errors.length ? ` ${errors.length}` : '';
     const week = Date.now() - 7 * 864e5;
     const sum = k => users.reduce((n, x) => n + Number(x[k] || 0), 0);
     if (tab === 'overview') {
@@ -112,6 +116,16 @@ views.admin = function adminView() {
           }).join('')}</tbody>
         </table></div>
         <p class="muted small">« Mot de passe » remplace celui d’un compte, par exemple quand quelqu’un l’a oublié : communique-lui le nouveau, il pourra le changer ensuite.</p>`;
+    } else if (tab === 'errors') {
+      body.innerHTML = `
+        <div class="row-head"><h2>Erreurs des 30 derniers jours <span class="pill">${errors.length}</span></h2>
+          <div class="actions"><button class="btn" data-action="reload">${icon('review')}Actualiser</button>${errors.length ? '<button class="btn ghost" data-action="clearerr">Vider le journal</button>' : ''}</div></div>
+        ${errors.length ? `<ul class="error-list">${errors.map(x => `<li class="panel">
+          <div class="report-head"><strong>${esc(x.message)}</strong></div>
+          <p class="muted small">${new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(x.created_at))} · ${esc(x.name || x.email || 'compte supprimé')} · page ${esc(x.page || '#')}</p>
+          ${x.detail ? `<details><summary class="muted small">Détails techniques</summary><pre class="err-detail">${esc(x.detail)}</pre><p class="muted small">${esc(x.agent || '')}</p></details>` : ''}
+        </li>`).join('')}</ul>` : '<p class="empty">Aucune erreur enregistrée. Tout va bien.</p>'}
+        <p class="muted small">Les erreurs rencontrées par les personnes connectées arrivent ici automatiquement : plantages du site, synchronisation impossible, IA indisponible.</p>`;
     } else {
       body.innerHTML = `
         <div class="row-head"><h2>Signalements en attente <span class="pill">${reports.length}</span></h2><button class="btn" data-action="reload">${icon('review')}Actualiser</button></div>

@@ -1,7 +1,8 @@
 // AI features. The model is called by the Supabase Edge Function "ai" (supabase/functions/ai),
 // which holds the API key and enforces a daily quota per account.
-import { uid, cleanDeck } from './logic.js?v=13';
-import { state, views, mount, app, esc, plural, icon, toast, touch, backHome, backTo, loadScript, playable, renderMath } from './core.js?v=13';
+import { uid, cleanDeck, normalize } from './logic.js?v=14';
+import { state, views, mount, app, esc, plural, icon, toast, touch, backHome, backTo, loadScript, playable, renderMath, store } from './core.js?v=14';
+import { reportError } from './sync.js?v=14';
 
 async function callAi(body) {
   if (!state.sb || !state.user) throw new Error('Connecte-toi pour utiliser l’IA.');
@@ -9,6 +10,7 @@ async function callAi(body) {
   if (error) {
     let msg = 'L’IA ne répond pas pour le moment. Réessaie dans un instant.';
     try { msg = (await error.context.json()).error || msg; } catch { /* keep the generic message */ }
+    reportError(`IA (${body.mode}) : ${msg}`);
     throw new Error(msg);
   }
   if (data?.error) throw new Error(data.error);
@@ -29,8 +31,22 @@ export async function gradeAnswers(items) {
   return Array.isArray(results) ? results : [];
 }
 
+// Explanations already given are kept on this device: asking again is instant and free.
+// The key covers the card's text, so editing the card asks the AI again.
+const EXPL = 'recto.explanations';
+const hash = s => [...s].reduce((h, c) => (h * 33 + c.charCodeAt(0)) >>> 0, 5381).toString(36);
 export async function explain(card, given, answerSide) {
+  const key = hash(`${card.term}|${card.def}|${answerSide}|${normalize(given || '')}`);
+  let saved = {};
+  try { saved = JSON.parse(store.get(EXPL)) || {}; } catch { /* start empty */ }
+  if (saved[key]) return saved[key];
   const { text } = await callAi({ mode: 'explain', term: card.term, def: card.def, given: given || '', side: answerSide });
+  if (text) {
+    saved[key] = text;
+    const keys = Object.keys(saved);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 300))) delete saved[k]; // keep the 300 most recent
+    store.set(EXPL, JSON.stringify(saved));
+  }
   return text;
 }
 

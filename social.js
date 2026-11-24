@@ -1,7 +1,7 @@
 // Share links, public sets (Explorer) and reports.
-import { slug, uid, cleanDeck } from './logic.js?v=13';
-import { state, views, mount, app, esc, plural, icon, toast, fr, touch, backHome, fmtDate, renderMath } from './core.js?v=13';
-import { snapshot, author } from './sync.js?v=13';
+import { slug, uid, cleanDeck } from './logic.js?v=14';
+import { state, views, mount, app, esc, plural, icon, toast, fr, touch, backHome, fmtDate, renderMath } from './core.js?v=14';
+import { snapshot, author } from './sync.js?v=14';
 
 const linkOf = id => `${location.origin}${location.pathname}#s/${id}`;
 // "par Tim", with the creator's photo; never the e-mail.

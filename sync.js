@@ -1,8 +1,24 @@
 // Accounts and sync with Supabase. Without config.js values the app stays local-only.
-import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=13';
-import { state, hooks, save, saveProfile, store, route, routeName, refreshIfIdle, fr, toast, displayName, avatarURL, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=13';
+import { merge, cleanProfile, mergeProfile, adopt } from './logic.js?v=14';
+import { state, hooks, save, saveProfile, store, route, routeName, refreshIfIdle, fr, toast, displayName, avatarURL, SUPABASE_URL, SUPABASE_KEY } from './core.js?v=14';
+
+// Errors seen by signed-in people are sent to the admin's journal (at most 10 per visit, no duplicates).
+const reported = new Set();
+export function reportError(message, detail = '') {
+  if (!state.sb || !state.user || reported.size >= 10) return;
+  const key = `${message}|${String(detail).slice(0, 120)}`;
+  if (reported.has(key)) return;
+  reported.add(key);
+  state.sb.from('client_errors').insert({
+    message: String(message).slice(0, 500), detail: String(detail).slice(0, 2000),
+    page: (location.hash || '#').slice(0, 200), agent: navigator.userAgent.slice(0, 300),
+  }).then(() => {}, () => {});
+}
+addEventListener('error', e => reportError(e.message || 'Erreur', `${e.filename || ''}:${e.lineno || ''} ${e.error?.stack || ''}`));
+addEventListener('unhandledrejection', e => reportError(String(e.reason?.message || e.reason || 'Promesse rejetée'), e.reason?.stack || ''));
 
 export function setSync(s, msg = '') {
+  if (s === 'error' && msg) reportError(`Synchro : ${msg}`);
   state.sync = s;
   state.syncMsg = msg;
   hooks.header();
