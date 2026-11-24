@@ -1,6 +1,6 @@
 // Top bar: navigation, account menu, keyboard shortcuts dialog.
-import { state, hooks, esc, icon, route, routeName, trashed, getTheme, setTheme, SUPABASE_URL, toast, avatarHTML, displayName } from './core.js?v=16';
-import { flushPushes } from './sync.js?v=16';
+import { state, hooks, esc, icon, route, routeName, trashed, getTheme, setTheme, SUPABASE_URL, toast, avatarHTML, displayName } from './core.js?v=17';
+import { flushPushes } from './sync.js?v=17';
 
 const area = document.getElementById('account-area');
 const SYNC = { off: 'Enregistré sur cet appareil', loading: 'Connexion…', signedout: '', syncing: 'Synchronisation…', idle: 'Synchronisé', error: 'Erreur de synchronisation' };

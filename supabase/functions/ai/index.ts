@@ -15,14 +15,15 @@ const ORDER = {
   full: ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.8-flash'],
 };
 
-// wait: how long one model may take; exams are long to write and to correct.
-async function gemini(parts: unknown[], key: string, quick = false, wait = quick ? 10_000 : 40_000) {
+// wait: how long one model may take. fast: skip the model's "thinking", which can take a minute
+// on long answers (writing or correcting an exam) when Google is busy.
+async function gemini(parts: unknown[], key: string, quick = false, wait = quick ? 10_000 : 40_000, fast = quick) {
   const models = [Deno.env.get('GEMINI_MODEL'), ...ORDER[quick ? 'quick' : 'full']].filter(Boolean) as string[];
   const config = (think: boolean) => ({
     responseMimeType: 'application/json',
     temperature: quick ? 0.2 : 0.4,
     ...(quick ? { maxOutputTokens: 400 } : {}),
-    ...(quick && !think ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+    ...(fast && !think ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
   });
   const call = (model: string, think: boolean) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
@@ -35,7 +36,7 @@ async function gemini(parts: unknown[], key: string, quick = false, wait = quick
     try {
       r = await call(model, false);
       // A model that refuses the "no thinking" setting answers 400: ask it again without it.
-      if (quick && r.status === 400) r = await call(model, true);
+      if (fast && r.status === 400) r = await call(model, true);
       // Google's free models are briefly overloaded at peak times: one more try after a pause.
       if (r.status === 503) {
         await new Promise(res => setTimeout(res, 1200));
@@ -181,7 +182,7 @@ L'énoncé ne doit jamais contenir sa réponse. Écris dans la langue des fiches
 Fiches (JSON) : ${JSON.stringify(cards)}
 Plan (JSON) : ${JSON.stringify(slots)}
 Réponds uniquement en JSON : {"questions": [{"slot": 1, "prompt": "...", "options": [], "correct": [], "answer": true, "pairs": [], "expected": "", "criteria": [], "hint": "", "explanation": ""}]}`,
-      }], key, false, 60_000);
+      }], key, false, 45_000, true);
       return json({ questions: (Array.isArray(out.questions) ? out.questions : []).slice(0, slots.length) });
     }
 
@@ -209,7 +210,7 @@ Règles :
 - "confidence" : "haute", "moyenne" ou "faible", selon ta certitude.
 Items (JSON) : ${JSON.stringify(items)}
 Réponds uniquement en JSON, un résultat par item dans le même ordre : {"results": [{"id": "...", "criteria": [{"awarded": 1, "comment": "..."}], "strengths": [], "errors": [], "missing": [], "explanation": "...", "confidence": "haute"}]}`,
-      }], key, false, 60_000);
+      }], key, false, 45_000, true);
       const list = Array.isArray(out.results) ? out.results : [];
       return json({ results: items.map((it: { id: string }, i: number) => list.find((r: { id?: unknown }) => r?.id === it.id) ?? list[i] ?? null) });
     }

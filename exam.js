@@ -1,9 +1,9 @@
 // Test mode: an exam written by the AI from the set's cards, taken one question per screen,
 // then corrected (written answers in one AI request) and marked out of 20.
 // The exam in progress is kept in this browser (recto.exam.<set id>), so it survives a reload.
-import { shuffle, review, EXAM_TYPES, examSlots, cleanQuestion, gradeAuto, fromAi, examCriteria, naResult, scoreOf, levelOf, masterSrs, answered } from './logic.js?v=16';
-import { views, mount, app, esc, plural, icon, toast, playable, touchCard, backTo, logStudy, store, canSpeak, speak, langOf, MASTERED_DAYS } from './core.js?v=16';
-import { examQuestions, correctExam, warmUp } from './ai.js?v=16';
+import { shuffle, review, EXAM_TYPES, examSlots, cleanQuestion, gradeAuto, fromAi, examCriteria, naResult, scoreOf, levelOf, masterSrs, answered } from './logic.js?v=17';
+import { views, mount, app, esc, plural, icon, toast, playable, touchCard, backTo, logStudy, store, canSpeak, speak, langOf, MASTERED_DAYS } from './core.js?v=17';
+import { examQuestions, correctExam, warmUp } from './ai.js?v=17';
 
 const DIFFS = { facile: 'Facile', intermediaire: 'Intermédiaire', difficile: 'Difficile', mixte: 'Mixte' };
 const DIFF_TEXT = { facile: 'Connaître les notions.', intermediaire: 'Les comprendre et s’en servir.', difficile: 'Raisonner, nuancer, éviter les pièges.', mixte: 'Un mélange des trois niveaux.' };
@@ -42,6 +42,14 @@ const clock = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 36
 const duration = s => { s = Math.round(s); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`; };
 const total = qs => qs.reduce((n, q) => n + q.points, 0);
 const typeLabel = t => EXAM_TYPES[t]?.label || t;
+// Google's free AI is often saturated for a few seconds: one more try after a pause.
+async function retry(fn) {
+  try { return await fn(); } catch (err) {
+    if (!/saturée|ne répond pas|pas pu répondre/.test(err.message)) throw err;
+    await new Promise(res => setTimeout(res, 4000));
+    return fn();
+  }
+}
 
 views.test = function testView(d, fav) {
   warmUp();
@@ -60,7 +68,7 @@ function setup(d, fav) {
   const saved = draft;
 
   const seg = (k, opts) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button type="button" data-action="set" data-k="${k}" data-v="${v}" aria-pressed="${String(o[k]) === v}">${l}</button>`).join('')}</div>`;
-  const toggle = (k, title, text) => `<label class="toggle"><span><strong>${title}</strong>${text ? `<span class="muted small">${text}</span>` : ''}</span><input type="checkbox" class="switch" data-k="${k}" ${o[k] ? 'checked' : ''}></label>`;
+  const toggle = (k, title, text) => `<label class="toggle"><span><strong>${title}</strong>${text ? `<span class="muted small">${text}</span>` : ''}</span><input type="checkbox" class="sw" data-k="${k}" ${o[k] ? 'checked' : ''}></label>`;
   const opt = (action, k, v, on, title, text) => `<button type="button" class="opt-tile" data-action="${action}" data-k="${k}" data-v="${v}" aria-pressed="${on}"><span class="tick">${icon('check')}</span><strong>${title}</strong><span class="muted small">${text}</span></button>`;
 
   function draw() {
@@ -113,7 +121,7 @@ function setup(d, fav) {
           </dl>
           <p class="form-error" role="alert">${o.types.length ? '' : 'Choisis au moins un type de question.'}</p>
           <button class="btn primary lg" data-action="go" ${o.types.length ? '' : 'disabled'}>${icon('sparkle')}Générer l’examen</button>
-          <p class="muted small">L’IA rédige les questions à partir de tes cartes. Compte 20 à 60 secondes par tranche de 10 questions.</p>
+          <p class="muted small">L’IA rédige les questions à partir de tes cartes. Compte 10 à 30 secondes par tranche de 6 questions.</p>
         </aside>
       </div>`, {
       wide: true,
@@ -149,14 +157,14 @@ function setup(d, fav) {
   draw();
 }
 
-// ---------- generation: 10 questions per AI request, one request after the other
+// ---------- generation: 6 questions per AI request, one request after the other
 async function generate(d, fav, o) {
   const all = playable(d, fav);
   const weak = all.filter(c => !c.srs || c.srs.interval < MASTERED_DAYS);
   const pool = shuffle(o.only === 'weak' && weak.length ? weak : all);
   const slots = examSlots(pool, o);
   const batches = [];
-  for (let i = 0; i < slots.length; i += 10) batches.push(slots.slice(i, i + 10));
+  for (let i = 0; i < slots.length; i += 6) batches.push(slots.slice(i, i + 6));
   gen = { deckId: d.id, fav, o, total: slots.length, nb: batches.length, batch: 0, questions: [], errors: [], stop: false, done: false };
   const g = gen;
   generating(d);
@@ -167,12 +175,12 @@ async function generate(d, fav, o) {
     const ids = [...new Set(bs.flatMap(s => s.cards))];
     const k = id => ids.indexOf(id) + 1;
     try {
-      const raw = await examQuestions({
+      const raw = await retry(() => examQuestions({
         cards: ids.map(id => pool.find(c => c.id === id)).map(c => ({ k: k(c.id), term: c.term, def: c.def })),
         slots: bs.map(s => ({ ...s, cards: s.cards.map(k) })),
         focus: o.focus,
         external: o.external,
-      });
+      }));
       bs.forEach((s, i) => {
         const q = cleanQuestion(raw.find(r => Number(r?.slot) === i + 1) || raw[i], s, o.scale === 'uniform');
         if (q) g.questions.push(q); else g.errors.push('Une question mal formée a été écartée.');
@@ -442,7 +450,7 @@ async function correct(d) {
     if (here(d)) mount(`${head(d)}<section class="panel exam-wait"><div class="wait-top"><span class="spinner" aria-hidden="true"></span><strong>Correction de ta copie…</strong></div>
       <p class="muted">Les QCM, vrai/faux et associations sont déjà corrigés. L’IA corrige maintenant ${todo.length > 1 ? `tes ${todo.length} réponses rédigées` : 'ta réponse rédigée'} en une seule fois, critère par critère.</p></section>`);
     try {
-      const out = await correctExam(todo.map(q => aiItem(d, q, dr.answers[q.id])));
+      const out = await retry(() => correctExam(todo.map(q => aiItem(d, q, dr.answers[q.id]))));
       todo.forEach((q, i) => { const x = out.find(r => r?.id === q.id) || out[i]; res[q.id] = x ? fromAi(q, x) : naResult(q, 'L’IA n’a pas renvoyé cette correction.'); });
     } catch (err) {
       for (const q of todo) res[q.id] = naResult(q, err.message);
