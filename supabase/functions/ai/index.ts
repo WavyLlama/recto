@@ -32,6 +32,7 @@ async function gemini(parts: unknown[], key: string, quick = false, wait = quick
     signal: AbortSignal.timeout(wait),
   });
   let r: Response | null = null;
+  const seen: number[] = [];
   for (const model of models) {
     try {
       let think = false;
@@ -49,6 +50,14 @@ async function gemini(parts: unknown[], key: string, quick = false, wait = quick
       continue;
     }
     if (r.ok) break;
+    seen.push(r.status);
+    // 429 = the free quota of this key for that model: keep which one (per minute or per day) in the logs.
+    if (r.status === 429) {
+      const t = await r.clone().text();
+      const quota = t.match(/"quotaId":\s*"([^"]+)"/)?.[1] ?? '?', wait = t.match(/"retryDelay":\s*"([^"]+)"/)?.[1] ?? '?';
+      console.error(`Gemini model ${model} answered 429 (quota ${quota}, retry in ${wait}), trying the next one`);
+      continue;
+    }
     // A model that rejects the request (400) may still work with the next one: keep Google's reason in the logs.
     if (r.status === 400) {
       console.error(`Gemini model ${model} answered 400, trying the next one: ${(await r.clone().text()).slice(0, 400)}`);
@@ -57,6 +66,7 @@ async function gemini(parts: unknown[], key: string, quick = false, wait = quick
     if (![404, 429, 500, 503].includes(r.status)) break;
     console.error(`Gemini model ${model} answered ${r.status}, trying the next one`);
   }
+  if (seen.length === models.length && seen.every(s => s === 429)) throw new Error('quota');
   if (!r || r.status === 429 || r.status === 503) throw new Error('busy');
   if (!r || !r.ok) throw new Error(`Gemini ${r?.status}: ${(await r?.text())?.slice(0, 300)}`);
   const data = await r.json();
@@ -241,6 +251,7 @@ Réponds uniquement en JSON : {"items": [{"id": "...", "alts": ["...", "...", ".
     return json({ error: 'Mode inconnu.' }, 400);
   } catch (e) {
     console.error(e);
+    if (e instanceof Error && e.message === 'quota') return json({ error: 'La limite gratuite de l’IA de Google est atteinte. Réessaie dans quelques minutes ; si elle est épuisée pour la journée, elle revient demain matin.' }, 429);
     if (e instanceof Error && e.message === 'busy') return json({ error: 'L’IA gratuite de Google est saturée pour le moment. Réessaie dans une minute.' }, 429);
     return json({ error: 'L’IA n’a pas pu répondre. Réessaie dans un instant.' }, 502);
   }
