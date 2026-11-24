@@ -34,17 +34,24 @@ async function gemini(parts: unknown[], key: string, quick = false, wait = quick
   let r: Response | null = null;
   for (const model of models) {
     try {
-      r = await call(model, false);
+      let think = false;
+      r = await call(model, think);
       // A model that refuses the "no thinking" setting answers 400: ask it again without it.
-      if (fast && r.status === 400) r = await call(model, true);
+      if (fast && r.status === 400) { think = true; r = await call(model, think); }
       // Google's free models are briefly overloaded at peak times: one more try after a pause.
       if (r.status === 503) {
         await new Promise(res => setTimeout(res, 1200));
-        r = await call(model, false);
+        r = await call(model, think);
       }
     } catch {
       console.error(`Gemini model ${model} timed out, trying the next one`);
       r = null;
+      continue;
+    }
+    if (r.ok) break;
+    // A model that rejects the request (400) may still work with the next one: keep Google's reason in the logs.
+    if (r.status === 400) {
+      console.error(`Gemini model ${model} answered 400, trying the next one: ${(await r.clone().text()).slice(0, 400)}`);
       continue;
     }
     if (![404, 429, 500, 503].includes(r.status)) break;
