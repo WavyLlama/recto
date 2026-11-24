@@ -1,6 +1,6 @@
 // Admin area. Every check is repeated server-side in supabase.sql.
-import { state, views, mount, app, esc, plural, icon, toast, fr, fmtDate, backHome } from './core.js?v=14';
-import { loadSettings } from './sync.js?v=14';
+import { state, views, mount, app, esc, plural, icon, toast, fr, fmtDate, backHome, removeUserFiles } from './core.js?v=15';
+import { loadSettings } from './sync.js?v=15';
 
 let tab = 'overview';
 
@@ -26,7 +26,10 @@ views.admin = function adminView() {
       del: el => { ask = el.dataset.id; pwFor = null; draw(); },
       pw: el => { pwFor = el.dataset.id; ask = null; draw(); app.querySelector('#newpw')?.focus(); },
       cancel: () => { ask = null; pwFor = null; draw(); },
-      confirm: el => rpc('admin_delete_user', { target: el.dataset.id }, 'Compte supprimé.'),
+      confirm: async el => {
+        const n = await removeUserFiles(el.dataset.id).catch(() => 0);
+        rpc('admin_delete_user', { target: el.dataset.id }, `Compte supprimé${n ? `, avec ${plural(n, 'image')}` : ''}.`);
+      },
       setpw: el => {
         const pw = app.querySelector('#newpw').value;
         if (pw.length < 8) return toast('Le mot de passe doit faire au moins 8 caractères.');

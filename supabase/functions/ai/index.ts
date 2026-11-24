@@ -2,12 +2,9 @@
 // Secrets: GEMINI_API_KEY (required), GEMINI_MODEL (optional, tried first).
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0';
 
-const cors = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
+// Only Recto's own pages may call the AI from a browser (other sites could otherwise spend the quota).
+const ALLOWED = ['https://wavyllama.github.io', 'http://localhost:5173'];
+
 const clip = (s: unknown, n: number) => String(s ?? '').slice(0, n);
 
 // Google retires model names and its free models are often saturated (503).
@@ -62,6 +59,15 @@ async function gemini(parts: unknown[], key: string, quick = false) {
 }
 
 Deno.serve(async req => {
+  const origin = req.headers.get('origin');
+  const cors = {
+    'Access-Control-Allow-Origin': origin && ALLOWED.includes(origin) ? origin : ALLOWED[0],
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
+  if (origin && !ALLOWED.includes(origin)) return json({ error: 'Origine non autorisée.' }, 403);
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'Méthode non autorisée.' }, 405);
   const key = Deno.env.get('GEMINI_API_KEY');

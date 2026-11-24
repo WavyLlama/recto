@@ -1,7 +1,7 @@
 // Shared state, helpers and view plumbing. Every module imports this file with the same URL.
-import { cleanDeck, cleanProfile, dayKey, uid, review, DAY } from './logic.js?v=14';
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=14';
-import { icon } from './icons.js?v=14';
+import { cleanDeck, cleanProfile, dayKey, uid, review, DAY } from './logic.js?v=15';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=15';
+import { icon } from './icons.js?v=15';
 export { SUPABASE_URL, SUPABASE_KEY, icon };
 
 export const app = document.getElementById('app');
@@ -184,6 +184,21 @@ export async function renderMath(el) {
 
 // Text and optional image of one side of a card.
 export const faceHTML = (text, img) => `${img ? `<img class="face-img" src="${esc(img)}" alt="" loading="lazy">` : ''}<span class="face-text">${esc(text)}</span>`;
+
+// Deletes every image stored for an account (card images and profile photo), before the account itself.
+// Files live under <user id>/ and <user id>/<deck id>/.
+export async function removeUserFiles(uid) {
+  const bucket = state.sb.storage.from('images');
+  const paths = [];
+  const { data: top } = await bucket.list(uid, { limit: 1000 });
+  for (const f of top || []) {
+    if (f.id) { paths.push(`${uid}/${f.name}`); continue; }
+    const { data: inner } = await bucket.list(`${uid}/${f.name}`, { limit: 1000 });
+    for (const g of inner || []) paths.push(`${uid}/${f.name}/${g.name}`);
+  }
+  for (let i = 0; i < paths.length; i += 100) await bucket.remove(paths.slice(i, i + 100));
+  return paths.length;
+}
 
 // ---------- profile (pseudo and photo live in the account's user_metadata)
 // Recto keeps its own keys (pseudo, photo): Google rewrites name and avatar_url at every sign-in.
