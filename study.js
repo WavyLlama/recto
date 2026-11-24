@@ -1,9 +1,9 @@
-import { shuffle, sameAnswer, review, buildQcm } from './logic.js?v=11';
+import { shuffle, sameAnswer, review, buildQcm } from './logic.js?v=12';
 import {
   state, views, mount, app, esc, plural, icon, toast, playable, live, touch, touchCard, backTo, backHome, logStudy, recordAnswer,
   speak, canSpeak, langOf, faceHTML, renderMath, store,
-} from './core.js?v=11';
-import { explain, gradeAnswers } from './ai.js?v=11';
+} from './core.js?v=12';
+import { explain, gradeAnswers, warmUp } from './ai.js?v=12';
 
 const other = side => (side === 'term' ? 'def' : 'term');
 const sideText = (c, side) => c[side];
@@ -101,6 +101,7 @@ views.cards = function cardsView(d, fav) {
 
 // ---------- learn: QCM first, then written answer; two right answers in a row = mastered
 views.learn = function learnView(d, fav) {
+  warmUp();
   const dir = getDir();
   const all = playable(d, fav), total = all.length;
   const pool = playable(d); // wrong options may come from the whole set
@@ -209,6 +210,7 @@ views.learn = function learnView(d, fav) {
 // ---------- test: options screen, then a graded exam
 const TYPES = [['qcm', 'QCM'], ['write', 'Réponse écrite'], ['tf', 'Vrai ou faux']];
 views.test = function testView(d, fav) {
+  warmUp();
   const all = playable(d, fav), pool = playable(d);
   const saved = (() => { try { return JSON.parse(store.get('recto.test')) || {}; } catch { return {}; } })();
   const opt = { count: saved.count || 20, types: saved.types || ['qcm', 'write', 'tf'], dir: saved.dir || 'term', timer: !!saved.timer };
@@ -360,6 +362,7 @@ views.match = function matchView(d, fav) {
 
 // ---------- writing and dictation
 views.write = function writeView(d, fav, only = null, modeArg = null) {
+  warmUp();
   const mode = modeArg || store.get('recto.write') || 'write'; // write: read the definition, type the term · dictee: hear the term, type it
   const cards = only || shuffle(playable(d, fav));
   const missed = [];
