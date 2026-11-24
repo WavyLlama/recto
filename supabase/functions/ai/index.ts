@@ -1,5 +1,6 @@
 // Recto AI: card generation, explanations, QCM distractors.
-// Secrets: GEMINI_API_KEY (required), GEMINI_MODEL (optional, tried first).
+// Secrets: GEMINI_API_KEY (required), GEMINI_MODEL (optional, tried first),
+// GROQ_API_KEY (optional backup when Google is saturated or out of quota), GROQ_MODEL (optional).
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0';
 
 // Only Recto's own pages may call the AI from a browser (other sites could otherwise spend the quota).
@@ -17,7 +18,7 @@ const ORDER = {
 
 // wait: how long one model may take. fast: skip the model's "thinking", which can take a minute
 // on long answers (writing or correcting an exam) when Google is busy.
-async function gemini(parts: unknown[], key: string, quick = false, wait = quick ? 10_000 : 40_000, fast = quick) {
+async function askGemini(parts: unknown[], key: string, quick: boolean, wait: number, fast: boolean) {
   const models = [Deno.env.get('GEMINI_MODEL'), ...ORDER[quick ? 'quick' : 'full']].filter(Boolean) as string[];
   const config = (think: boolean) => ({
     responseMimeType: 'application/json',
@@ -75,6 +76,42 @@ async function gemini(parts: unknown[], key: string, quick = false, wait = quick
     .map((p: { text?: string }) => p.text ?? '').join('') || '{}';
   // Some models wrap JSON in a ```json fence despite the JSON response type.
   return JSON.parse(text.trim().replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, ''));
+}
+
+// Groq (free, OpenAI-compatible API): used only when Gemini fails, for text requests.
+async function askGroq(prompt: string, key: string, quick: boolean, wait: number) {
+  const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model: Deno.env.get('GROQ_MODEL') || 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: quick ? 0.2 : 0.4,
+      ...(quick ? { max_tokens: 400 } : {}),
+    }),
+    signal: AbortSignal.timeout(wait),
+  });
+  if (!r.ok) throw new Error(`Groq ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  const data = await r.json();
+  return JSON.parse(data.choices?.[0]?.message?.content || '{}');
+}
+
+async function gemini(parts: unknown[], key: string, quick = false, wait = quick ? 10_000 : 40_000, fast = quick) {
+  try {
+    return await askGemini(parts, key, quick, wait, fast);
+  } catch (e) {
+    const groqKey = Deno.env.get('GROQ_API_KEY');
+    const texts = parts.map(p => (p as { text?: unknown })?.text);
+    if (!groqKey || !texts.every(t => typeof t === 'string')) throw e; // photos stay with Gemini
+    console.error(`Gemini failed (${e instanceof Error ? e.message.slice(0, 80) : e}), trying Groq`);
+    try {
+      return await askGroq(texts.join('\n\n'), groqKey, quick, wait);
+    } catch (g) {
+      console.error(`Groq failed too: ${g instanceof Error ? g.message : g}`);
+      throw e;
+    }
+  }
 }
 
 Deno.serve(async req => {
