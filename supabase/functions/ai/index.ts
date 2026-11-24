@@ -10,21 +10,29 @@ const cors = {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 const clip = (s: unknown, n: number) => String(s ?? '').slice(0, n);
 
-// Google retires model names regularly: try the configured one, then the "latest Flash" alias, then a pinned fallback.
-const MODELS = [Deno.env.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-3.8-flash'].filter(Boolean) as string[];
+// Google retires model names and its free models are often saturated (503):
+// try the configured model, then the "latest" aliases, then a pinned fallback.
+const MODELS = [Deno.env.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.8-flash'].filter(Boolean) as string[];
 
 async function gemini(parts: unknown[], key: string) {
   let r: Response | null = null;
   for (const model of MODELS) {
-    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.4 } }),
-    });
-    if (r.status !== 404) break;
-    console.error(`Gemini model ${model} unavailable, trying the next one`);
+    try {
+      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.4 } }),
+        signal: AbortSignal.timeout(25_000),
+      });
+    } catch {
+      console.error(`Gemini model ${model} timed out, trying the next one`);
+      r = null;
+      continue;
+    }
+    if (![404, 429, 500, 503].includes(r.status)) break;
+    console.error(`Gemini model ${model} answered ${r.status}, trying the next one`);
   }
-  if (r?.status === 429) throw new Error('busy');
+  if (!r || r.status === 429 || r.status === 503) throw new Error('busy');
   if (!r || !r.ok) throw new Error(`Gemini ${r?.status}: ${(await r?.text())?.slice(0, 300)}`);
   const data = await r.json();
   const text = (data.candidates?.[0]?.content?.parts ?? [])
