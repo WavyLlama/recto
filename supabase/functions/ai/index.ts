@@ -24,10 +24,14 @@ async function gemini(parts: unknown[], key: string) {
     if (r.status !== 404) break;
     console.error(`Gemini model ${model} unavailable, trying the next one`);
   }
+  if (r?.status === 429) throw new Error('busy');
   if (!r || !r.ok) throw new Error(`Gemini ${r?.status}: ${(await r?.text())?.slice(0, 300)}`);
   const data = await r.json();
-  const text = (data.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('') || '{}';
-  return JSON.parse(text);
+  const text = (data.candidates?.[0]?.content?.parts ?? [])
+    .filter((p: { thought?: boolean }) => !p.thought)
+    .map((p: { text?: string }) => p.text ?? '').join('') || '{}';
+  // Some models wrap JSON in a ```json fence despite the JSON response type.
+  return JSON.parse(text.trim().replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, ''));
 }
 
 Deno.serve(async req => {
@@ -87,6 +91,25 @@ Réponds uniquement en JSON : {"text": "..."}`,
       return json({ text: clip(out.text, 800) });
     }
 
+    if (body.mode === 'grade') {
+      const items = (Array.isArray(body.items) ? body.items : []).slice(0, 20)
+        .map((it: { term?: unknown; def?: unknown; side?: unknown; given?: unknown }) => {
+          const wantsDef = it?.side === 'def';
+          return { question: clip(wantsDef ? it?.term : it?.def, 1000), attendu: clip(wantsDef ? it?.def : it?.term, 1000), reponse: clip(it?.given, 1000) };
+        });
+      if (!items.length) return json({ results: [] });
+      const out = await gemini([{
+        text: `Tu corriges les réponses écrites d'un élève qui révise des fiches. Pour chaque réponse, dis si elle est juste sur le fond par rapport à la réponse attendue.
+Accepte : synonymes, reformulations, ordre différent, abréviations courantes, fautes d'orthographe, réponse plus courte qui contient l'essentiel.
+Refuse : erreur sur le fond, notion confondue avec une autre, réponse trop vague ou à laquelle il manque l'élément principal.
+Pour chaque réponse, donne un retour d'une phrase en français (au plus 25 mots) : pourquoi c'est accepté, ou ce qui manque ou est faux.
+Réponses (JSON) : ${JSON.stringify(items)}
+Réponds uniquement en JSON, dans le même ordre : {"results": [{"correct": true, "feedback": "..."}]}`,
+      }], key);
+      const list = Array.isArray(out.results) ? out.results : [];
+      return json({ results: items.map((_: unknown, i: number) => ({ correct: list[i]?.correct === true, feedback: clip(list[i]?.feedback, 300) })) });
+    }
+
     if (body.mode === 'distractors') {
       const cards = (Array.isArray(body.cards) ? body.cards : []).slice(0, 40)
         .map((c: { id?: unknown; term?: unknown; def?: unknown }) => ({ id: clip(c?.id, 60), term: clip(c?.term, 300), def: clip(c?.def, 600) }));
@@ -106,6 +129,7 @@ Réponds uniquement en JSON : {"items": [{"id": "...", "alts": ["...", "...", ".
     return json({ error: 'Mode inconnu.' }, 400);
   } catch (e) {
     console.error(e);
+    if (e instanceof Error && e.message === 'busy') return json({ error: 'L’IA gratuite de Google est saturée pour le moment. Réessaie dans une minute.' }, 429);
     return json({ error: 'L’IA n’a pas pu répondre. Réessaie dans un instant.' }, 502);
   }
 });
