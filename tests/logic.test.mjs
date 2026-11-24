@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseImport, parseCsv, toCsv, sameAnswer, review, buildQcm, merge, mergeDeck, cleanDeck, cleanProfile, mergeProfile, streak, dayKey, slug, adopt, DAY } from '../logic.js';
+import { parseImport, parseCsv, toCsv, sameAnswer, review, buildQcm, merge, mergeDeck, cleanDeck, cleanProfile, mergeProfile, streak, dayKey, slug, adopt, DAY, examSlots, cleanQuestion, gradeAuto, fromAi, scoreOf, levelOf, masterSrs, answered } from '../logic.js';
 
 test('parseImport picks the first separator by priority', () => {
   const { cards, skipped } = parseImport('Paris\tcapitale ; France\nArticle 1240 ; Responsabilité\nHello - Bonjour\nsans séparateur\n\n');
@@ -145,4 +145,59 @@ test('the "hide my pseudo" choice survives cleaning and merging', () => {
   assert.equal(b.hideAuthor, true);
   assert.equal(mergeDeck(a, b).hideAuthor, true);
   assert.equal(cleanDeck({ id: 'd', title: 't', cards: [], updatedAt: 1, hideAuthor: true }).hideAuthor, undefined); // only on shared sets
+});
+
+test('exam plan: one slot per question, cards from the set, association needs three cards', () => {
+  const cards = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'e' }];
+  const slots = examSlots(cards, { count: 8, types: ['qcm', 'association', 'cas'], difficulty: 'mixte', qcmMode: 'both' });
+  assert.equal(slots.length, 8);
+  for (const s of slots) {
+    assert.ok(s.cards.length >= 1 && s.cards.every(id => 'abcde'.includes(id)));
+    assert.equal(new Set(s.cards).size, s.cards.length);
+    if (s.type === 'association') assert.equal(s.cards.length, 4);
+  }
+  assert.ok(examSlots(cards.slice(0, 2), { count: 4, types: ['association'], difficulty: 'facile' }).every(s => s.type === 'qcm'));
+});
+
+test('exam questions from the AI are checked and graded', () => {
+  const slot = { type: 'qcm', difficulty: 'facile', cards: ['a'] };
+  assert.equal(cleanQuestion({ prompt: 'Q', options: ['x', 'y'], correct: [5] }, slot), null);
+  assert.equal(cleanQuestion({ prompt: '', options: ['x', 'y'], correct: [0] }, slot), null);
+  const q = cleanQuestion({ prompt: 'Q', options: ['bon', 'faux1', 'faux2', 'faux3'], correct: [0], cards: ['zzz'] }, slot);
+  assert.deepEqual(q.cards, ['a']);
+  assert.equal(q.options[q.correct[0]], 'bon');
+  assert.equal(gradeAuto(q, [q.correct[0]]).verdict, 'ok');
+  assert.equal(gradeAuto(q, [(q.correct[0] + 1) % 4]).verdict, 'ko');
+  assert.equal(answered(q, []), false);
+
+  const vf = cleanQuestion({ prompt: 'Affirmation', answer: false }, { type: 'vf', difficulty: 'facile', cards: ['a'], justify: true });
+  assert.equal(vf.points, 2);
+  assert.equal(gradeAuto(vf, { v: true, j: 'parce que' }).earned, 0);
+  assert.equal(gradeAuto(vf, { v: false, j: 'parce que' }), null); // the AI corrects the justification
+  const vfRes = fromAi(vf, { criteria: [{ awarded: 99 }] });
+  assert.equal(vfRes.earned, 2);
+  assert.equal(vfRes.verdict, 'ok');
+
+  const open = cleanQuestion({ prompt: 'Explique', expected: 'Modèle', criteria: [{ label: 'Règle', weight: 2 }, { label: 'Application', weight: 1 }] }, { type: 'cas', difficulty: 'difficile', cards: ['a', 'b'] });
+  assert.equal(open.points, 6);
+  assert.equal(gradeAuto(open, '  ').verdict, 'ko');
+  assert.equal(gradeAuto(open, 'ma réponse'), null);
+  const r = fromAi(open, { criteria: [{ awarded: 4, comment: 'ok' }, { awarded: -1 }], confidence: 'bizarre' });
+  assert.equal(r.earned, 4);
+  assert.equal(r.verdict, 'pa');
+  assert.equal(r.confidence, 'moyenne');
+
+  const s = scoreOf([q, open, vf], { [q.id]: { earned: 1, max: 1, verdict: 'ok' }, [open.id]: r, [vf.id]: { verdict: 'na' } });
+  assert.equal(s.score20, round(5 / 7 * 20));
+  assert.equal(s.na, 1);
+  assert.equal(levelOf(14.3), 'Bien');
+});
+const round = x => Math.round(x * 100) / 100;
+
+test('a card right in an exam is learned for at least three weeks', () => {
+  const now = Date.UTC(2026, 0, 10, 12);
+  const s = masterSrs(undefined, now);
+  assert.ok(s.interval >= 21 && s.due > now + 20 * DAY);
+  const failed = review(s, 0, now + 30 * DAY);
+  assert.equal(failed.interval, 0);
 });

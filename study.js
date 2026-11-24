@@ -1,9 +1,9 @@
-import { shuffle, sameAnswer, review, buildQcm } from './logic.js?v=15';
+import { shuffle, sameAnswer, review, buildQcm } from './logic.js?v=16';
 import {
   state, views, mount, app, esc, plural, icon, toast, playable, live, touch, touchCard, backTo, backHome, logStudy, recordAnswer,
   speak, canSpeak, langOf, faceHTML, renderMath, store,
-} from './core.js?v=15';
-import { explain, gradeAnswers, warmUp } from './ai.js?v=15';
+} from './core.js?v=16';
+import { explain, gradeAnswers, warmUp } from './ai.js?v=16';
 
 const other = side => (side === 'term' ? 'def' : 'term');
 const sideText = (c, side) => c[side];
@@ -205,125 +205,6 @@ views.learn = function learnView(d, fav) {
     next();
   }
   next();
-};
-
-// ---------- test: options screen, then a graded exam
-const TYPES = [['qcm', 'QCM'], ['write', 'Réponse écrite'], ['tf', 'Vrai ou faux']];
-views.test = function testView(d, fav) {
-  warmUp();
-  const all = playable(d, fav), pool = playable(d);
-  const saved = (() => { try { return JSON.parse(store.get('recto.test')) || {}; } catch { return {}; } })();
-  const opt = { count: saved.count || 20, types: saved.types || ['qcm', 'write', 'tf'], dir: saved.dir || 'term', timer: !!saved.timer };
-  const counts = [5, 10, 20, 50].filter(n => n < all.length);
-
-  mount(`${head(d, 'Test', fav)}
-    <form class="panel test-setup" id="setup">
-      <h2>Paramètres du test</h2>
-      <fieldset><legend>Nombre de questions</legend><div class="seg">${[...counts, all.length].map(n => `<label><input type="radio" name="count" value="${n}" ${Math.min(opt.count, all.length) === n ? 'checked' : ''}><span>${n === all.length ? `Toutes (${n})` : n}</span></label>`).join('')}</div></fieldset>
-      <fieldset><legend>Types de questions</legend><div class="checks">${TYPES.map(([k, l]) => `<label class="check"><input type="checkbox" name="types" value="${k}" ${opt.types.includes(k) ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div></fieldset>
-      <fieldset><legend>Question sur</legend><div class="seg">${DIRS.map(([k, l]) => `<label><input type="radio" name="dir" value="${k}" ${opt.dir === k ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div></fieldset>
-      <label class="check"><input type="checkbox" name="timer" ${opt.timer ? 'checked' : ''}><span>Afficher un chronomètre</span></label>
-      <p class="form-error" id="err" role="alert"></p>
-      <button class="btn primary lg" type="submit">Commencer le test</button>
-    </form>`, {
-    submit: () => {
-      const f = new FormData(app.querySelector('#setup'));
-      const types = f.getAll('types');
-      if (!types.length) { app.querySelector('#err').textContent = 'Choisis au moins un type de question.'; return; }
-      const o = { count: +f.get('count'), types, dir: f.get('dir'), timer: f.get('timer') === 'on' };
-      store.set('recto.test', JSON.stringify(o));
-      run(o);
-    },
-  });
-
-  function run(o) {
-    const picked = shuffle(all).slice(0, o.count);
-    const kinds = shuffle(picked.map((_, i) => o.types[i % o.types.length]));
-    const qs = picked.map((c, i) => {
-      const type = kinds[i], q = pickSide(o.dir), a = other(q);
-      if (type === 'qcm') return { type, c, q, a, opts: buildQcm(pool, c, a) };
-      if (type === 'tf') {
-        const wrong = shuffle(pool.filter(x => x.id !== c.id && x[a] !== c[a]))[0];
-        const truth = !wrong || Math.random() < 0.5;
-        return { type, c, q, a, shown: truth ? c[a] : wrong[a], truth };
-      }
-      return { type, c, q, a };
-    });
-    const body = (x, i) => {
-      const what = x.a === 'def' ? 'la définition' : 'le terme';
-      if (x.type === 'qcm') {
-        return `<legend><span class="num">${i + 1}</span>Choisis ${what}</legend><div class="prompt sm">${sideHTML(x.c, x.q)}</div>
-          ${x.opts.map((o2, k) => `<label class="choice"><input type="radio" name="q${i}" value="${k}"><span>${esc(o2)}</span></label>`).join('')}`;
-      }
-      if (x.type === 'tf') {
-        return `<legend><span class="num">${i + 1}</span>Vrai ou faux ?</legend><div class="prompt sm">${sideHTML(x.c, x.q)}</div><p class="tf-shown">${icon('next')}${esc(x.shown)}</p>
-          <div class="tf"><label class="choice"><input type="radio" name="q${i}" value="1"><span>Vrai</span></label><label class="choice"><input type="radio" name="q${i}" value="0"><span>Faux</span></label></div>`;
-      }
-      return `<legend><span class="num">${i + 1}</span>Écris ${what}</legend><div class="prompt sm">${sideHTML(x.c, x.q)}</div>
-        <label class="sr" for="w${i}">Ta réponse</label><input id="w${i}" name="q${i}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Ta réponse">`;
-    };
-    let graded = false, timer = null;
-    const t0 = Date.now();
-    const elapsed = () => { const s = Math.round((Date.now() - t0) / 1000); return `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`; };
-    mount(`${head(d, 'Test', fav, o.timer ? '<span class="count timer" id="timer">0 min 00 s</span>' : `<span class="count">${plural(qs.length, 'question')}</span>`)}
-      <form class="test" novalidate>${qs.map((x, i) => `<fieldset class="tq" id="q${i}">${body(x, i)}</fieldset>`).join('')}
-      <div class="actions" id="test-actions"><button class="btn primary lg" type="submit">Corriger</button></div></form>`, {
-      cleanup: () => clearInterval(timer),
-      submit: async () => {
-        if (graded) return;
-        graded = true;
-        clearInterval(timer);
-        const form = app.querySelector('form.test'), data = new FormData(form);
-        const given = qs.map((_, i) => data.get(`q${i}`));
-        const verdict = qs.map((x, i) => (x.type === 'qcm' ? given[i] !== null && x.opts[+given[i]] === x.c[x.a]
-          : x.type === 'tf' ? given[i] !== null && (given[i] === '1') === x.truth
-            : sameAnswer(given[i] || '', x.c[x.a])));
-        // Written answers that are not exact go to the AI, one request per answer.
-        const checks = {};
-        const toCheck = qs.map((_, i) => i).filter(i => qs[i].type === 'write' && !verdict[i] && (given[i] || '').trim());
-        if (toCheck.length && state.user) {
-          const btn = form.querySelector('[type=submit]');
-          btn.disabled = true;
-          for (const [k, i] of toCheck.entries()) {
-            btn.textContent = `L’IA vérifie la réponse ${k + 1} sur ${toCheck.length}…`;
-            checks[i] = await checkWritten(qs[i].c, qs[i].a, given[i]);
-            if (checks[i].ok) verdict[i] = true;
-          }
-          // Google's free AI is sometimes overloaded for a few seconds: try those answers again once.
-          const failed = toCheck.filter(i => checks[i].aiError);
-          if (failed.length) {
-            btn.textContent = 'L’IA est très demandée, nouvel essai…';
-            await new Promise(res => setTimeout(res, 3000));
-            for (const i of failed) {
-              checks[i] = await checkWritten(qs[i].c, qs[i].a, given[i]);
-              if (checks[i].ok) verdict[i] = true;
-            }
-          }
-        }
-        let score = 0;
-        qs.forEach((x, i) => {
-          const ok = verdict[i];
-          score += ok;
-          recordAnswer(d, x.c, ok);
-          const fs = app.querySelector(`#q${i}`);
-          fs.classList.add(ok ? 'ok' : 'ko');
-          fs.disabled = true;
-          if (!ok) {
-            const right = x.type === 'tf' ? (x.truth ? 'Vrai' : `Faux : ${x.c[x.q]} → ${x.c[x.a]}`) : x.c[x.a];
-            fs.insertAdjacentHTML('beforeend', `<p class="expected-line">Réponse : ${esc(right)}</p>`);
-          }
-          if (checks[i]) fs.insertAdjacentHTML('beforeend', aiLines(checks[i], ok));
-        });
-        logStudy(qs.length);
-        form.insertAdjacentHTML('afterbegin', `<div class="score" role="status"><strong>${score} / ${qs.length}</strong><span>${Math.round((score / qs.length) * 100)} %</span><span class="muted">en ${elapsed()}</span></div>`);
-        app.querySelector('#test-actions').innerHTML = `<button class="btn primary" type="button" data-action="again">Nouveau test</button><a class="btn" href="#learn/${d.id}${fav ? '/fav' : ''}">Retravailler avec Apprendre</a>`;
-        renderMath(form);
-        scrollTo(0, 0);
-      },
-      click: { again: () => { testView(d, fav); scrollTo(0, 0); } },
-    });
-    if (o.timer) timer = setInterval(() => { const el = document.getElementById('timer'); if (el) el.textContent = elapsed(); }, 1000);
-  }
 };
 
 // ---------- match

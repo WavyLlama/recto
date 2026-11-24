@@ -1,10 +1,10 @@
-import { uid, parseImport, parseCsv, toCsv, cleanDeck } from './logic.js?v=15';
+import { uid, parseImport, parseCsv, toCsv, cleanDeck } from './logic.js?v=16';
 import {
   state, views, mount, app, esc, plural, icon, toast, download, playable, dueIn, newIn, mastery, tint, meter, touch, touchCard,
   removeCards, backHome, backTo, autosize, live, trashed, purge, fmtDate, LANGS, MASTERED_DAYS, TRASH_DAYS, fr,
-} from './core.js?v=15';
-import { shareHTML, shareActions, stopShare, onShareChange } from './social.js?v=15';
-import { improveQcm } from './ai.js?v=15';
+} from './core.js?v=16';
+import { shareHTML, shareActions, stopShare, onShareChange } from './social.js?v=16';
+import { improveQcm } from './ai.js?v=16';
 
 const favOnly = {}; // deck id -> study only starred cards
 
@@ -55,7 +55,7 @@ views.deck = function deckView(d) {
     ${n ? `<nav class="modes" aria-label="Modes d’étude">
       ${mode('cards', 'Cartes', 'Retourner et parcourir, avec lecture à voix haute')}
       ${mode('learn', 'Apprendre', 'QCM puis réponse écrite, jusqu’à la maîtrise', n >= 2)}
-      ${mode('test', 'Test', 'Examen noté, questions et chrono au choix', n >= 2)}
+      ${mode('test', 'Test', 'Examen rédigé par l’IA, noté sur 20', n >= 2)}
       ${mode('match', 'Association', d.bestMatch ? `Ton record : ${d.bestMatch.toFixed(1)} s` : 'Relier les paires contre la montre', n >= 2)}
       ${mode('write', 'Écriture et dictée', 'Écris la réponse, ou écoute et écris')}
     </nav>` : `<p class="empty">Ce set est vide. <a href="#edit/${d.id}">Ajoute des cartes</a> ou <a href="#ai/${d.id}">fais-les générer par l’IA</a>.</p>`}

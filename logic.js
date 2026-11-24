@@ -323,3 +323,146 @@ export function streak(days, now) {
   }
   return { current, best: Math.max(best, current) };
 }
+
+// ---------- AI exam: plan, question checks, automatic grading, score
+// w = points of a question in the weighted scale.
+export const EXAM_TYPES = {
+  qcm: { label: 'QCM', w: 1, desc: 'Une ou plusieurs bonnes réponses parmi quatre.' },
+  vf: { label: 'Vrai ou faux', w: 1, desc: 'Une affirmation à juger, avec justification possible.' },
+  association: { label: 'Association', w: 2, desc: 'Relier des notions à leur définition.' },
+  ouverte: { label: 'Question ouverte', w: 3, desc: 'Une réponse rédigée en quelques phrases.' },
+  reflexion: { label: 'Réflexion', w: 4, desc: 'Expliquer, comparer, argumenter.' },
+  cas: { label: 'Cas pratique', w: 6, desc: 'Une situation concrète où appliquer tes notions.' },
+};
+export const WRITTEN = new Set(['ouverte', 'reflexion', 'cas']);
+const MIX = ['facile', 'intermediaire', 'difficile'];
+const str = (x, n) => (typeof x === 'string' ? x.trim().slice(0, n) : '');
+const list = x => (Array.isArray(x) ? x : []);
+
+// One slot per question: type, difficulty and the ids of the cards it rests on.
+// cards: the cards to cover, in priority order; o: the exam settings.
+export function examSlots(cards, o) {
+  const types = cards.length >= 3 ? o.types : o.types.filter(t => t !== 'association');
+  const kinds = shuffle(Array.from({ length: o.count }, (_, i) => (types.length ? types : ['qcm'])[i % (types.length || 1)]));
+  let multi = 0;
+  return kinds.map((type, i) => {
+    const take = type === 'association' ? Math.min(4, cards.length) : type === 'cas' || type === 'reflexion' ? Math.min(2, cards.length) : 1;
+    const ids = [...new Set(Array.from({ length: take }, (_, k) => cards[(i + k) % cards.length].id))];
+    const s = { type, difficulty: o.difficulty === 'mixte' ? MIX[(i + Math.floor(Math.random() * 3)) % 3] : o.difficulty, cards: ids };
+    if (type === 'qcm') s.multiple = o.qcmMode === 'multi' || (o.qcmMode === 'both' && multi++ % 2 === 1);
+    if (type === 'vf') s.justify = !!o.vfJustify;
+    return s;
+  });
+}
+
+// Checks a question written by the AI against its slot; returns null when it is unusable.
+// The cards come from the slot, never from the AI, so the progress update stays on the right cards.
+export function cleanQuestion(r, slot, uniform = false) {
+  const prompt = str(r?.prompt, 4000);
+  if (!prompt) return null;
+  const { type } = slot;
+  const q = { id: uid(), type, difficulty: slot.difficulty, cards: slot.cards, prompt, hint: str(r.hint, 600), explanation: str(r.explanation, 2000), points: EXAM_TYPES[type].w };
+  if (type === 'qcm') {
+    const opts = list(r.options).map(o => str(o, 500)).filter(Boolean).slice(0, 6);
+    const good = new Set(list(r.correct).map(Number).filter(i => Number.isInteger(i) && i >= 0 && i < opts.length));
+    if (opts.length < 2 || !good.size || good.size === opts.length) return null;
+    const order = shuffle(opts.map((_, i) => i)); // the right answer is not always A
+    q.options = order.map(i => opts[i]);
+    q.correct = order.flatMap((i, k) => (good.has(i) ? [k] : []));
+    q.multiple = q.correct.length > 1 || !!slot.multiple;
+  } else if (type === 'vf') {
+    if (typeof r.answer !== 'boolean') return null;
+    q.answer = r.answer;
+    q.justify = !!slot.justify;
+    if (q.justify) q.points = 2;
+  } else if (type === 'association') {
+    const pairs = list(r.pairs).map(p => ({ left: str(p?.left, 300), right: str(p?.right, 500) })).filter(p => p.left && p.right).slice(0, 6);
+    if (pairs.length < 2) return null;
+    q.pairs = pairs;
+    q.rightOrder = shuffle(pairs.map((_, i) => i));
+  } else {
+    q.expected = str(r.expected, 4000);
+    if (!q.expected) return null;
+    q.criteria = list(r.criteria).map(c => ({ label: str(c?.label, 200), weight: Math.min(3, Math.max(1, Number(c?.weight) || 1)) })).filter(c => c.label).slice(0, 6);
+    if (!q.criteria.length) q.criteria = [{ label: 'Exactitude et complétude de la réponse', weight: 1 }];
+  }
+  if (uniform) q.points = 1;
+  return q;
+}
+
+export const answered = (q, a) => (a == null ? false
+  : q.type === 'qcm' ? Array.isArray(a) && a.length > 0
+    : q.type === 'vf' ? typeof a.v === 'boolean'
+      : q.type === 'association' ? Object.values(a).some(v => v !== '' && v != null)
+        : String(a).trim().length > 0);
+
+const result = (q, earned, more) => {
+  const e = Math.min(q.points, Math.max(0, round2(earned))), r = e / q.points;
+  return { earned: e, max: q.points, verdict: r >= 0.8 ? 'ok' : r > 0.2 ? 'pa' : 'ko', ...more };
+};
+export const naResult = (q, error) => ({ earned: 0, max: q.points, verdict: 'na', error });
+const vfExpected = q => `${q.answer ? 'Vrai' : 'Faux'}${q.explanation ? `. ${q.explanation}` : ''}`;
+
+// Grades what needs no AI; returns null for answers the AI must correct.
+export function gradeAuto(q, a) {
+  if (q.type === 'qcm') {
+    const sel = Array.isArray(a) ? a : [];
+    const good = sel.filter(i => q.correct.includes(i)).length;
+    const earned = q.correct.length === 1 && !q.multiple ? (sel.length === 1 && good === 1 ? q.points : 0)
+      : Math.max(0, (good - (sel.length - good)) / q.correct.length) * q.points;
+    return result(q, earned, { expected: q.correct.map(i => `${String.fromCharCode(65 + i)}. ${q.options[i]}`).join('\n') });
+  }
+  if (q.type === 'vf') {
+    const right = a?.v === q.answer;
+    if (!q.justify) return result(q, right ? q.points : 0, { expected: vfExpected(q) });
+    if (!right || !String(a?.j || '').trim()) return result(q, right ? 0.6 * q.points : 0, { expected: vfExpected(q), missing: right ? ['Justification absente.'] : [] });
+    return null;
+  }
+  if (q.type === 'association') {
+    const ok = q.pairs.filter((_, i) => String(a?.[i]) === String(i)).length;
+    return result(q, (ok / q.pairs.length) * q.points, { expected: q.pairs.map(p => `${p.left} → ${p.right}`).join('\n') });
+  }
+  if (!String(a || '').trim()) return result(q, 0, { expected: q.expected, missing: ['Aucune réponse.'] });
+  return null;
+}
+
+// Grading grid sent to the AI, in points: the justification of a true/false is worth 40 %.
+export function examCriteria(q) {
+  if (q.type === 'vf') return [{ label: 'Justification exacte et fondée', max: round2(0.4 * q.points) }];
+  const sum = q.criteria.reduce((s, c) => s + c.weight, 0);
+  return q.criteria.map(c => ({ label: c.label, max: round2((c.weight / sum) * q.points) }));
+}
+
+// Turns the AI's correction of one answer into a result.
+export function fromAi(q, r) {
+  const grid = examCriteria(q);
+  const criteria = grid.map((c, i) => {
+    const x = list(r?.criteria)[i] || {};
+    return { label: c.label, max: c.max, awarded: round2(Math.min(c.max, Math.max(0, Number(x.awarded) || 0))), comment: str(x.comment, 400) };
+  });
+  const lines = x => list(x).map(s => str(s, 400)).filter(Boolean).slice(0, 5);
+  return result(q, (q.type === 'vf' ? 0.6 * q.points : 0) + criteria.reduce((s, c) => s + c.awarded, 0), {
+    ai: true, criteria, strengths: lines(r?.strengths), errors: lines(r?.errors), missing: lines(r?.missing),
+    explanation: str(r?.explanation, 2000), confidence: ['haute', 'moyenne', 'faible'].includes(r?.confidence) ? r.confidence : 'moyenne',
+    expected: q.type === 'vf' ? vfExpected(q) : q.expected,
+  });
+}
+
+// Mark out of 20 over the corrected questions; provisional while some could not be corrected.
+export function scoreOf(questions, results) {
+  let earned = 0, max = 0, na = 0;
+  for (const q of questions) {
+    const r = results[q.id];
+    if (!r || r.verdict === 'na') { na++; continue; }
+    earned += r.earned;
+    max += r.max;
+  }
+  return { earned, max, score20: max ? round2((earned / max) * 20) : 0, na };
+}
+export const levelOf = s => (s >= 16 ? 'Très bien' : s >= 14 ? 'Bien' : s >= 12 ? 'Assez bien' : s >= 10 ? 'Passable' : s >= 7 ? 'Insuffisant' : 'Très insuffisant');
+
+// A card whose exam questions were all right counts as learned: at least `days` before it comes back.
+export function masterSrs(srs, now, days = 21) {
+  const r = review(srs, 3, now);
+  return r.interval >= days ? r : { ...r, s: Math.max(r.s, days), interval: days, due: midnightPlus(now, days) };
+}

@@ -1,8 +1,8 @@
 // AI features. The model is called by the Supabase Edge Function "ai" (supabase/functions/ai),
 // which holds the API key and enforces a daily quota per account.
-import { uid, cleanDeck, normalize } from './logic.js?v=15';
-import { state, views, mount, app, esc, plural, icon, toast, touch, backHome, backTo, loadScript, playable, renderMath, store } from './core.js?v=15';
-import { reportError } from './sync.js?v=15';
+import { uid, cleanDeck, normalize } from './logic.js?v=16';
+import { state, views, mount, app, esc, plural, icon, toast, touch, backHome, backTo, loadScript, playable, renderMath, store } from './core.js?v=16';
+import { reportError } from './sync.js?v=16';
 
 async function callAi(body) {
   if (!state.sb || !state.user) throw new Error('Connecte-toi pour utiliser l’IA.');
@@ -28,6 +28,17 @@ export function warmUp() {
 // Asks the AI whether written answers are right in substance. items: [{ term, def, side, given }].
 export async function gradeAnswers(items) {
   const { results } = await callAi({ mode: 'grade', items });
+  return Array.isArray(results) ? results : [];
+}
+
+// Exam: writes the questions of up to 12 slots (cards: [{ k, term, def }]).
+export async function examQuestions(payload) {
+  const { questions } = await callAi({ mode: 'exam', ...payload });
+  return Array.isArray(questions) ? questions : [];
+}
+// Exam: corrects every written answer of a copy in one request.
+export async function correctExam(items) {
+  const { results } = await callAi({ mode: 'correct', items });
   return Array.isArray(results) ? results : [];
 }
 
