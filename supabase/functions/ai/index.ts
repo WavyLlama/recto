@@ -79,22 +79,44 @@ async function askGemini(parts: unknown[], key: string, quick: boolean, wait: nu
 }
 
 // Groq (free, OpenAI-compatible API): used only when Gemini fails, for text requests.
+// Groq retires models often, so the function asks Groq which ones exist and takes the best chat models.
+let groqModels: string[] | null = null;
+async function listGroqModels(key: string) {
+  if (groqModels?.length) return groqModels;
+  const PREF = ['gpt-oss-120b', 'kimi-k2', 'llama-4-maverick', 'qwen3', 'llama-3.3-70b', 'gpt-oss-20b', 'llama'];
+  const rank = (id: string) => { const i = PREF.findIndex(p => id.includes(p)); return i < 0 ? 99 : i; };
+  try {
+    const r = await fetch('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(5000) });
+    const ids = r.ok ? ((await r.json()).data ?? []).filter((m: { active?: boolean }) => m.active !== false).map((m: { id: unknown }) => String(m.id)) : [];
+    groqModels = ids.filter((id: string) => !/whisper|tts|guard|prompt|playai|orpheus|compound|distil|vision/i.test(id))
+      .sort((x: string, y: string) => rank(x) - rank(y)).slice(0, 3);
+    console.error(`Groq models: ${groqModels.join(', ') || 'none'}`);
+  } catch {
+    groqModels = [];
+  }
+  return groqModels;
+}
+
 async function askGroq(prompt: string, key: string, quick: boolean, wait: number) {
-  const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      model: Deno.env.get('GROQ_MODEL') || 'llama-3.3-70b-versatile',
-      messages: [{ role: 'user', content: prompt }],
-      response_format: { type: 'json_object' },
-      temperature: quick ? 0.2 : 0.4,
-      ...(quick ? { max_tokens: 400 } : {}),
-    }),
-    signal: AbortSignal.timeout(wait),
-  });
-  if (!r.ok) throw new Error(`Groq ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  const data = await r.json();
-  return JSON.parse(data.choices?.[0]?.message?.content || '{}');
+  const models = [Deno.env.get('GROQ_MODEL'), ...(await listGroqModels(key))].filter(Boolean) as string[];
+  let last = 'aucun modèle disponible';
+  for (const model of models) {
+    try {
+      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: quick ? 0.2 : 0.4 }),
+        signal: AbortSignal.timeout(wait),
+      });
+      if (!r.ok) { last = `${model} ${r.status}: ${(await r.text()).slice(0, 200)}`; console.error(`Groq ${last}`); continue; }
+      const text = (await r.json()).choices?.[0]?.message?.content || '';
+      return JSON.parse(text.trim().replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, ''));
+    } catch (e) {
+      last = `${model}: ${e instanceof Error ? e.message : e}`;
+      console.error(`Groq ${last}`);
+    }
+  }
+  throw new Error(`Groq: ${last}`);
 }
 
 async function gemini(parts: unknown[], key: string, quick = false, wait = quick ? 10_000 : 40_000, fast = quick) {
