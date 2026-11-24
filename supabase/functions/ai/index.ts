@@ -10,20 +10,34 @@ const cors = {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 const clip = (s: unknown, n: number) => String(s ?? '').slice(0, n);
 
-// Google retires model names and its free models are often saturated (503):
-// try the configured model, then the "latest" aliases, then a pinned fallback.
-const MODELS = [Deno.env.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.8-flash'].filter(Boolean) as string[];
+// Google retires model names and its free models are often saturated (503).
+// Quick tasks (checking an answer, explaining a mistake) start with the fastest model and skip
+// the model's "thinking"; card generation keeps the stronger model first.
+const ORDER = {
+  quick: ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-3.8-flash'],
+  full: ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.8-flash'],
+};
 
-async function gemini(parts: unknown[], key: string) {
+async function gemini(parts: unknown[], key: string, quick = false) {
+  const models = [Deno.env.get('GEMINI_MODEL'), ...ORDER[quick ? 'quick' : 'full']].filter(Boolean) as string[];
+  const config = (think: boolean) => ({
+    responseMimeType: 'application/json',
+    temperature: quick ? 0.2 : 0.4,
+    ...(quick ? { maxOutputTokens: 400 } : {}),
+    ...(quick && !think ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+  });
+  const call = (model: string, think: boolean) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: config(think) }),
+    signal: AbortSignal.timeout(quick ? 10_000 : 40_000),
+  });
   let r: Response | null = null;
-  for (const model of MODELS) {
+  for (const model of models) {
     try {
-      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.4 } }),
-        signal: AbortSignal.timeout(25_000),
-      });
+      r = await call(model, false);
+      // A model that refuses the "no thinking" setting answers 400: ask it again without it.
+      if (quick && r.status === 400) r = await call(model, true);
     } catch {
       console.error(`Gemini model ${model} timed out, trying the next one`);
       r = null;
@@ -48,17 +62,19 @@ Deno.serve(async req => {
   const key = Deno.env.get('GEMINI_API_KEY');
   if (!key) return json({ error: 'L’IA n’est pas encore configurée sur ce site (clé manquante).' }, 503);
 
-  // The caller's own session: the quota and the checks below run as that user.
-  const apikey = req.headers.get('apikey') ?? Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-  const sb = createClient(Deno.env.get('SUPABASE_URL')!, apikey, { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } });
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) return json({ error: 'Connecte-toi pour utiliser l’IA.' }, 401);
-  const { data: allowed, error: quotaError } = await sb.rpc('ai_take_quota');
-  if (quotaError) return json({ error: 'Quota indisponible, réessaie plus tard.' }, 500);
-  if (!allowed) return json({ error: 'Limite quotidienne d’utilisation de l’IA atteinte. Réessaie demain.' }, 429);
-
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: 'Requête invalide.' }, 400); }
+  // Sent when a study screen opens, so the function is already started when the first answer arrives.
+  if (body.mode === 'ping') return json({ ok: true });
+
+  // The caller's own session: the quota runs as that user. The quota function returns false
+  // for a visitor without an account, so both checks can run at the same time.
+  const apikey = req.headers.get('apikey') ?? Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const sb = createClient(Deno.env.get('SUPABASE_URL')!, apikey, { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } });
+  const [{ data: { user } }, { data: allowed, error: quotaError }] = await Promise.all([sb.auth.getUser(), sb.rpc('ai_take_quota')]);
+  if (!user) return json({ error: 'Connecte-toi pour utiliser l’IA.' }, 401);
+  if (quotaError) return json({ error: 'Quota indisponible, réessaie plus tard.' }, 500);
+  if (!allowed) return json({ error: 'Limite quotidienne d’utilisation de l’IA atteinte. Réessaie demain.' }, 429);
 
   try {
     if (body.mode === 'generate') {
@@ -95,7 +111,7 @@ Définition : ${clip(body.def, 1000)}
 On lui demandait : ${body.side === 'def' ? 'la définition' : 'le terme'}
 Sa réponse : ${clip(body.given, 300) || '(aucune)'}
 Réponds uniquement en JSON : {"text": "..."}`,
-      }], key);
+      }], key, true);
       return json({ text: clip(out.text, 800) });
     }
 
@@ -113,7 +129,7 @@ Refuse : erreur sur le fond, notion confondue avec une autre, réponse trop vagu
 Pour chaque réponse, donne un retour d'une phrase en français (au plus 25 mots) : pourquoi c'est accepté, ou ce qui manque ou est faux.
 Réponses (JSON) : ${JSON.stringify(items)}
 Réponds uniquement en JSON, dans le même ordre : {"results": [{"correct": true, "feedback": "..."}]}`,
-      }], key);
+      }], key, true);
       const list = Array.isArray(out.results) ? out.results : [];
       return json({ results: items.map((_: unknown, i: number) => ({ correct: list[i]?.correct === true, feedback: clip(list[i]?.feedback, 300) })) });
     }
