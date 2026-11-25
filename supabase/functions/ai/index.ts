@@ -18,8 +18,12 @@ const ORDER = {
 
 // wait: how long one model may take. fast: skip the model's "thinking", which can take a minute
 // on long answers (writing or correcting an exam) when Google is busy.
+// Models whose free quota is used up, until when: skipped instead of asked again (saves 1 to 40 s each).
+const blockedUntil: Record<string, number> = {};
 async function askGemini(parts: unknown[], key: string, quick: boolean, wait: number, fast: boolean) {
-  const models = [Deno.env.get('GEMINI_MODEL'), ...ORDER[quick ? 'quick' : 'full']].filter(Boolean) as string[];
+  const all = [Deno.env.get('GEMINI_MODEL'), ...ORDER[quick ? 'quick' : 'full']].filter(Boolean) as string[];
+  const models = all.filter(m => !(blockedUntil[m] > Date.now()));
+  if (!models.length) throw new Error('quota');
   const config = (think: boolean) => ({
     responseMimeType: 'application/json',
     temperature: quick ? 0.2 : 0.4,
@@ -56,6 +60,8 @@ async function askGemini(parts: unknown[], key: string, quick: boolean, wait: nu
     if (r.status === 429) {
       const t = await r.clone().text();
       const quota = t.match(/"quotaId":\s*"([^"]+)"/)?.[1] ?? '?', wait = t.match(/"retryDelay":\s*"([^"]+)"/)?.[1] ?? '?';
+      const secs = parseFloat(wait);
+      if (secs > 0) blockedUntil[model] = Date.now() + Math.min(secs, 86_400) * 1000;
       console.error(`Gemini model ${model} answered 429 (quota ${quota}, retry in ${wait}), trying the next one`);
       continue;
     }
@@ -258,7 +264,7 @@ L'énoncé ne doit jamais contenir sa réponse. Écris dans la langue des fiches
 Fiches (JSON) : ${JSON.stringify(cards)}
 Plan (JSON) : ${JSON.stringify(slots)}
 Réponds uniquement en JSON : {"questions": [{"slot": 1, "prompt": "...", "options": [], "correct": [], "answer": true, "pairs": [], "expected": "", "criteria": [], "hint": "", "explanation": ""}]}`,
-      }], key, false, 45_000, true);
+      }], key, false, 35_000, true);
       return json({ questions: (Array.isArray(out.questions) ? out.questions : []).slice(0, slots.length) });
     }
 
@@ -274,8 +280,7 @@ Réponds uniquement en JSON : {"questions": [{"slot": 1, "prompt": "...", "optio
           answer: clip(it?.answer, 5000),
         }));
       if (!items.length) return json({ results: [] });
-      const out = await gemini([{
-        text: `Tu corriges la copie d'un étudiant comme un correcteur d'examen : rigoureux, juste et bienveillant.
+      const ask = (list: typeof items) => `Tu corriges la copie d'un étudiant comme un correcteur d'examen : rigoureux, juste et bienveillant.
 Chaque item donne la question, la réponse modèle ("expected"), la grille ("criteria", avec le maximum de points de chaque critère), les fiches de cours de référence ("cards") et la réponse de l'étudiant ("answer").
 Règles :
 - Note chaque critère de 0 à son maximum, demi-points permis. Accepte une formulation différente du corrigé si elle est juste sur le fond. Pas de points pour le hors-sujet, le vague ou le recopiage de l'énoncé.
@@ -284,11 +289,31 @@ Règles :
 - "strengths", "errors", "missing" : 0 à 3 éléments chacun, une phrase chacun.
 - "explanation" : 2 à 4 phrases qui expliquent ce qu'il fallait répondre.
 - "confidence" : "haute", "moyenne" ou "faible", selon ta certitude.
-Items (JSON) : ${JSON.stringify(items)}
-Réponds uniquement en JSON, un résultat par item dans le même ordre : {"results": [{"id": "...", "criteria": [{"awarded": 1, "comment": "..."}], "strengths": [], "errors": [], "missing": [], "explanation": "...", "confidence": "haute"}]}`,
-      }], key, false, 45_000, true);
-      const list = Array.isArray(out.results) ? out.results : [];
-      return json({ results: items.map((it: { id: string }, i: number) => list.find((r: { id?: unknown }) => r?.id === it.id) ?? list[i] ?? null) });
+Items (JSON) : ${JSON.stringify(list)}
+Réponds uniquement en JSON, un résultat par item dans le même ordre : {"results": [{"id": "...", "criteria": [{"awarded": 1, "comment": "..."}], "strengths": [], "errors": [], "missing": [], "explanation": "...", "confidence": "haute"}]}`;
+      // Each answer is matched by id; a result without its grading grid counts as missing.
+      const done = new Map<string, unknown>();
+      const keep = (list: typeof items, out: { results?: unknown }) => {
+        const rs = Array.isArray(out?.results) ? out.results : [];
+        list.forEach((it, i) => {
+          const r = rs.find((x: { id?: unknown }) => x?.id === it.id) ?? (rs.length === list.length ? rs[i] : null);
+          if (r && Array.isArray((r as { criteria?: unknown }).criteria)) done.set(it.id, r);
+        });
+      };
+      let first: unknown = null;
+      try { keep(items, await askGemini([{ text: ask(items) }], key, false, 35_000, true)); } catch (e) { first = e; }
+      // Answers Gemini could not correct go straight to the backup AI, 5 at a time (Groq limits the size of a request).
+      const groqKey = Deno.env.get('GROQ_API_KEY');
+      const missing = items.filter(it => !done.has(it.id));
+      if (missing.length && groqKey) {
+        console.error(`Correction: ${missing.length} answer(s) sent to Groq`);
+        for (let i = 0; i < missing.length; i += 5) {
+          const part = missing.slice(i, i + 5);
+          try { keep(part, await askGroq(ask(part), groqKey, false, 35_000)); } catch (e) { console.error(`Groq correction failed: ${e instanceof Error ? e.message : e}`); }
+        }
+      }
+      if (!done.size && first) throw first;
+      return json({ results: items.map(it => done.get(it.id) ?? null) });
     }
 
     if (body.mode === 'distractors') {

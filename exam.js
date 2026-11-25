@@ -1,9 +1,9 @@
 // Test mode: an exam written by the AI from the set's cards, taken one question per screen,
 // then corrected (written answers in one AI request) and marked out of 20.
 // The exam in progress is kept in this browser (recto.exam.<set id>), so it survives a reload.
-import { shuffle, review, EXAM_TYPES, examSlots, cleanQuestion, gradeAuto, fromAi, examCriteria, naResult, scoreOf, levelOf, masterSrs, answered } from './logic.js?v=17';
-import { views, mount, app, esc, plural, icon, toast, playable, touchCard, backTo, logStudy, store, canSpeak, speak, langOf, MASTERED_DAYS } from './core.js?v=17';
-import { examQuestions, correctExam, warmUp } from './ai.js?v=17';
+import { shuffle, review, EXAM_TYPES, examSlots, cleanQuestion, gradeAuto, fromAi, examCriteria, naResult, scoreOf, levelOf, masterSrs, answered } from './logic.js?v=18';
+import { views, mount, app, esc, plural, icon, toast, playable, touchCard, backTo, logStudy, store, canSpeak, speak, langOf, MASTERED_DAYS } from './core.js?v=18';
+import { examQuestions, correctExam, warmUp } from './ai.js?v=18';
 
 const DIFFS = { facile: 'Facile', intermediaire: 'Intermédiaire', difficile: 'Difficile', mixte: 'Mixte' };
 const DIFF_TEXT = { facile: 'Connaître les notions.', intermediaire: 'Les comprendre et s’en servir.', difficile: 'Raisonner, nuancer, éviter les pièges.', mixte: 'Un mélange des trois niveaux.' };
@@ -157,7 +157,7 @@ function setup(d, fav) {
   draw();
 }
 
-// ---------- generation: 6 questions per AI request, one request after the other
+// ---------- generation: 6 questions per AI request, 3 requests at the same time
 async function generate(d, fav, o) {
   const all = playable(d, fav);
   const weak = all.filter(c => !c.srs || c.srs.interval < MASTERED_DAYS);
@@ -165,13 +165,10 @@ async function generate(d, fav, o) {
   const slots = examSlots(pool, o);
   const batches = [];
   for (let i = 0; i < slots.length; i += 6) batches.push(slots.slice(i, i + 6));
-  gen = { deckId: d.id, fav, o, total: slots.length, nb: batches.length, batch: 0, questions: [], errors: [], stop: false, done: false };
+  gen = { deckId: d.id, fav, o, total: slots.length, questions: [], errors: [], stop: false, done: false };
   const g = gen;
   generating(d);
-  for (const [b, bs] of batches.entries()) {
-    if (g.stop) break;
-    g.batch = b;
-    if (here(d)) generating(d);
+  const one = async bs => {
     const ids = [...new Set(bs.flatMap(s => s.cards))];
     const k = id => ids.indexOf(id) + 1;
     try {
@@ -187,9 +184,13 @@ async function generate(d, fav, o) {
       });
     } catch (err) {
       g.errors.push(err.message);
-      if (/limite|Connecte/i.test(err.message)) break;
+      if (/limite|Connecte/i.test(err.message)) g.stop = true;
     }
-  }
+    if (gen === g && here(d) && !g.done) generating(d);
+  };
+  // shortcut: 3 parallel requests fits Gemini's and Groq's per-minute free limits for one user; lower it if many people generate at once.
+  const queue = batches.slice();
+  await Promise.all([0, 1, 2].map(async () => { while (queue.length && !g.stop) await one(queue.shift()); }));
   g.done = true;
   if (gen !== g) return;
   if (g.questions.length === g.total) start(d, g.fav, g.o, g.questions);
@@ -203,10 +204,10 @@ function generating(d) {
     return mount(`${head0}<section class="panel exam-wait">
       <div class="wait-top"><span class="spinner" aria-hidden="true"></span><strong>L’IA rédige ton examen à partir de tes cartes…</strong></div>
       <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${g.total}" aria-valuenow="${g.questions.length}"><span style="width:${pct}%"></span></div>
-      <p class="muted small">${g.questions.length} / ${g.total} questions prêtes${g.nb > 1 ? ` · partie ${g.batch + 1} sur ${g.nb}` : ''}</p>
+      <p class="muted small">${g.questions.length} / ${g.total} questions prêtes</p>
       ${g.errors.length ? `<p class="small warn-text">${esc(g.errors.at(-1))}</p>` : ''}
       <div class="actions"><button class="btn" data-action="stop">Arrêter</button></div>
-    </section>`, { click: { stop: () => { g.stop = true; toast('Arrêt après la partie en cours…'); } } });
+    </section>`, { click: { stop: () => { g.stop = true; toast('Arrêt après les questions en cours…'); } } });
   }
   mount(`${head0}<section class="panel exam-wait">
     <h2>${g.questions.length ? 'Examen incomplet' : 'L’examen n’a pas pu être créé'}</h2>
